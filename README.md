@@ -1,6 +1,10 @@
 ## miten
 積読アプリ
 
+### リンク
+- [vercel](https://vercel.com/trueryobs-projects/miten-mlx4)
+- [supabase](https://supabase.com/dashboard/project/ijgdgctsyisifuzahuip)
+
 ### 備忘録
 
 1. Row Level Security設定

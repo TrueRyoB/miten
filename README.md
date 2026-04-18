@@ -11,6 +11,7 @@ ALTER TABLE your_table ENABLE ROW LEVEL SECURITY;
 
 その他
 - pnpm
-- supabaseでホスト / DB
+- supabaseでバックエンド
+- vercelでフロントエンドをホスト
 - next.jsでUI
 - 無料枠

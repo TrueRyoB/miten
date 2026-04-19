@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
+import Placeholder from '@/pages/placeholder'
 
 export default async function Page() {
   // const cookieStore = await cookies()
@@ -8,8 +9,6 @@ export default async function Page() {
   // const { data: todos } = await supabase.from('todos').select()
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Hello world</h1>
-    </main>
+    <Placeholder />
   )
 }

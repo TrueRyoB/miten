@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
-import Placeholder from '@/pages/placeholder'
+import Placeholder from '@/components/placeholder'
 
 export default async function Page() {
   // const cookieStore = await cookies()

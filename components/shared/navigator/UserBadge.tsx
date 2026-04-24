@@ -1,0 +1,39 @@
+import Link from "next/link";
+import { UserBadgeProps } from "./types";
+
+/**
+ * 認証状態バッジ
+ * - ログアウト時: "Login" リンク
+ * - ログイン + オンライン: 緑ドット + ユーザー名
+ * - ログイン + オフライン: グレードット + ユーザー名
+ */
+export default function UserBadge({
+  isLoggedIn,
+  isOnline = false,
+  username,
+}: UserBadgeProps) {
+  if (!isLoggedIn) {
+    return (
+      <Link
+        href="/login"
+        className="text-sm font-medium text-blue-500 hover:text-blue-400 transition-colors"
+      >
+        Login
+      </Link>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1.5 text-sm text-gray-300">
+      {/* オンライン/オフライン インジケーター */}
+      <span
+        className={[
+          "inline-block w-2 h-2 rounded-full flex-shrink-0",
+          isOnline ? "bg-green-400" : "bg-gray-500",
+        ].join(" ")}
+        aria-label={isOnline ? "オンライン" : "オフライン"}
+      />
+      <span className="max-w-[120px] truncate">{username ?? "User"}</span>
+    </span>
+  );
+}

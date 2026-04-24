@@ -1,4 +1,19 @@
+'use client';
+
+import { useState } from "react";
+import Navigator from "./navigator";
+import type { Locale } from "./navigator/types";
+import { useParams, usePathname, useRouter } from "next/navigation";
+
 export default function TopBar() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const locale = (useParams() as { locale: Locale }).locale;
+  const [isLoggedIn] = useState(false);
+  const [isOnline] = useState(false);
+  const [username] = useState("");
+  const onLocaleChange = (l: Locale) =>
+    router.push(`${pathname}?locale=${l}`, { scroll: false });
   return (
     <>
     <style>{`
@@ -11,6 +26,10 @@ export default function TopBar() {
             z-index: 100;
             gap: 14px;
             backdrop-filter: blur(6px);
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
             }
             .topbar-logo {
             font-family: 'Shippori Mincho', serif;
@@ -39,12 +58,21 @@ export default function TopBar() {
             color: rgba(200,170,110,.55);
             letter-spacing: .05em;
             }
+            .topbar-nav-wrapper {
+              display: flex;
+              flex-direction: row;
+              justify-content: flex-end;
+              align-items: center;
+              flex-grow: 1;
+            }
     `}</style>
     <header className="topbar">
         <div className="topbar-logo">美天</div>
         <div className="topbar-sep"></div>
         <div className="topbar-sub">TSUNDOKU MANAGER</div>
-        <div className="topbar-stats" id="globalStats"></div>
+        <div className="topbar-nav-wrapper">
+          <Navigator isLoggedIn={isLoggedIn} isOnline={isOnline} username={username} locale={locale} onLocaleChange={onLocaleChange} />
+        </div>
     </header>
     </>
   )

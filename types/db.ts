@@ -1,4 +1,5 @@
 import type { Column } from "./column";
+import type { Book } from "./book";
 /*
 **************************************************
 Schema + contracts only
@@ -35,6 +36,7 @@ export interface MitenDatabase {
   getPayload(): DB;
   subscribe(listener: MitenDbListener): () => void;
   addColumn(column: Column): void;
+  addBook(book: Book): void;
   /** Pull remote snapshot, merge with local (LWW), push if local wins. No-op if offline / no session / no Supabase. */
   sync(): Promise<void>;
 }

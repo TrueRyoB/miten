@@ -2,7 +2,7 @@
 
 import { useModal } from '@/hooks/modal-context'
 
-export default function PeekModal() {
+export default function PeekModal({ columnId: _columnId }: { columnId: string }) {
   const { close } = useModal()
 
   return (

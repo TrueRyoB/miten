@@ -1,11 +1,13 @@
 'use client'
 
 import { useModal } from '@/hooks/modal-context'
+import { mitenDb } from '@/lib/miten-db'
 
-export default function PopModal() {
+export default function PopModal( { columnId }: { columnId: string } ) {
   const { close } = useModal()
 
   function confirmPop() {
+    // mitenDb.popBook(columnId)
     close()
   }
 
@@ -23,22 +25,22 @@ export default function PopModal() {
         onClick={(e) => e.target === e.currentTarget && close()}
       >
         <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <button type="button" className="modal-close" onClick={close} aria-label="閉じる">
+          <button type="button" className="modal-close" onClick={close} aria-label="close">
             ✕
           </button>
           <div className="modal-title" id="popModalTitle">
-            本を取り除く — Pop
+            Pop book
           </div>
           <div className="peek-field">
             <div className="confirm-msg" id="popConfirmMsg" />
-            <div className="confirm-sub">この操作は取り消せません。</div>
+            <div className="confirm-sub">This action cannot be undone.</div>
           </div>
           <div className="modal-actions">
             <button type="button" className="btn-cancel" onClick={close}>
-              キャンセル
+              Cancel
             </button>
             <button type="button" className="btn-danger" onClick={confirmPop}>
-              読了 → Pop
+              Mark as read → pop
             </button>
           </div>
         </div>

@@ -1,9 +1,15 @@
 import type { Column as ColumnType } from '@/types/column'
 import type { Book as BookType } from '@/types/book'
+import { useModal } from '@/hooks/modal-context'
+import BookSpine from './bookspine'
+import { fmtTime } from '@/utils/data-to-ui'
 
 export default function Column({ column }: { column: ColumnType }) {
+    const { open } = useModal()
+
     const isEmpty = column.books.length === 0;
     const color = column.color;
+
     function startEditTitle(id: string, element: HTMLDivElement) {
         console.log(id, element);
     }
@@ -11,16 +17,13 @@ export default function Column({ column }: { column: ColumnType }) {
         console.log(id);
     }
     function openPushModal(id: string) {
-        console.log(id);
+        open({ type: 'pushCol', columnId: id });
     }
     function openPeekModal(id: string) {
         console.log(id);
     }
     function openPopModal(id: string) {
         console.log(id);
-    }
-    function fmtTime(total: number) {
-        return +total.toFixed(1)+" min";
     }
     function totalEstimatedMinutes(books: BookType[]) {
         return books.reduce((acc, book) => acc + book.estimatedMinutes, 0);
@@ -191,7 +194,13 @@ export default function Column({ column }: { column: ColumnType }) {
                     <button className="col-btn" onClick={() => openPopModal(column.id)} disabled={isEmpty}>Pop</button>
                 </div>
             </div>
-            <div className="col-stack" id={`stack-${column.id}`}></div>
+            <div className="col-stack" id={`stack-${column.id}`}>
+                {isEmpty ? <div className="col-empty">No books yet</div> : 
+                    column.books.map((book, i) => (
+                        <BookSpine key={book.id} book={book} isTop={i === 0} />
+                    ))
+                }
+            </div>
         </div>
         </>
     );

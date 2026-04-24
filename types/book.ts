@@ -1,13 +1,23 @@
 export type Book = {
     id: string;
-    label: string;
+    // userId: string;
+    columnId: string;
+
+    createdAt: string;
+    title: string;
     color: string;
     estimatedMinutes: number;
-    link: string;
+    sourceUrl: string;
+
     isImportant: boolean;
-    pushedAt: string;
-    
+
     poppedAt: string | null;
+
+    isArchived: boolean | null;
+    genre: string | null;
+    review: string | null;
+    rating: number | null;
+    nextUrl: string | null;
 }
 
 export default Book;

@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/client";
 import type { Column } from "@/types/column";
+import type { Book } from "@/types/book";
 import type {
   DB,
   DbEnvelope,
@@ -111,6 +112,7 @@ class MitenDbService implements MitenDatabase {
     for (const fn of this.listeners) fn(this.envelope);
   }
 
+  //TODO: client ID match verification
   addColumn(column: Column): void {
     this.envelope = {
       version: DB_SCHEMA_VERSION,
@@ -121,6 +123,30 @@ class MitenDbService implements MitenDatabase {
     };
     writeLocal(this.envelope);
     this.notify(); // fire-and-forget
+    void this.sync();
+  }
+
+  addBook(book: Book): void {
+    const { columns } = this.envelope.payload;
+    const colIndex = columns.findIndex((c) => c.id === book.columnId);
+    if (colIndex === -1) {
+      console.warn(`addBook: no column with id "${book.columnId}"`);
+      return;
+    }
+
+    const nextColumns = columns.map((col, i) =>
+      i === colIndex
+        ? { ...col, books: [book, ...col.books] }
+        : col
+    );
+
+    this.envelope = {
+      version: DB_SCHEMA_VERSION,
+      updatedAt: new Date().toISOString(),
+      payload: { columns: nextColumns },
+    };
+    writeLocal(this.envelope);
+    this.notify();
     void this.sync();
   }
 

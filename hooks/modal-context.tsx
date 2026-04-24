@@ -5,10 +5,10 @@ import { createContext, useState, useContext, ReactNode } from "react";
 export type ModalState =
   | { type: null }
   | { type: 'addCol' } //add column
-  | { type: 'pushCol' } //add book
-  | { type: 'peekCol', stackId: string} //peek book
-  | { type: 'popCol', stackId: string} //remove book
-  | { type: 'deleteCol', stackId: string } //delete column
+  | { type: 'pushCol', columnId: string} //add book
+  | { type: 'peekCol',  columnId: string} //peek book
+  | { type: 'popCol', columnId: string} //remove book
+  | { type: 'deleteCol', columnId: string } //delete column
 
 type ModalContextType = {
   modal: ModalState;

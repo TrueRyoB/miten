@@ -44,6 +44,44 @@ body {
   overflow-y: hidden;
 }
 
+@font-face {
+  font-family: 'Shippori Mincho';
+  src: url('../public/fonts/ShipporiMincho-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Shippori Mincho';
+  src: url('../public/fonts/ShipporiMincho-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Shippori Mincho';
+  src: url('../public/fonts/ShipporiMincho-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Shippori Mincho';
+  src: url('../public/fonts/ShipporiMincho-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Shippori Mincho';
+  src: url('../public/fonts/ShipporiMincho-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 
 @theme inline {
   --color-background: var(--background);

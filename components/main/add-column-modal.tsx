@@ -5,11 +5,14 @@ import { useModal } from '@/hooks/modal-context'
 import { mitenDb } from '@/lib/miten-db'
 import type { Column } from '@/types/column'
 import { COLUMNS_COLORS } from '@/utils/colors/column'
+import { useClock } from '@/hooks/use-clock'
 
 export default function AddColumnModal() {
   const { close } = useModal()
-  const [label, setLabel] = useState('')
+  const [label, setLabel] = useState('')  
   const [showError, setShowError] = useState(false)
+
+  const { now: nowISO } = useClock()
 
   function submit() {
     const trimmed = label.trim()
@@ -20,11 +23,13 @@ export default function AddColumnModal() {
     setShowError(false)
 
     const column: Column = {
+      //TODO: fix by querying it to the server
       id: crypto.randomUUID(),
+      // userId: user.id,
       label: trimmed,
       color: COLUMNS_COLORS[Math.floor(Math.random() * COLUMNS_COLORS.length)],
       books: [],
-      createdAt: new Date().toISOString(),
+      createdAt: nowISO(),
       poppedAt: null,
     }
     mitenDb.addColumn(column)

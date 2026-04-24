@@ -1,11 +1,69 @@
 'use client'
 
 import { useModal } from '@/hooks/modal-context'
+import { mitenDb } from '@/lib/miten-db'
+import { useState } from 'react'
+import type { Book as BookType } from '@/types/book'
+import {
+  EstimatedMinutesIssue,
+  ESTIMATED_MINUTES_MAX,
+  estimatedMinutesIssueMessage,
+  validateEstimatedMinutesRaw,
+} from '@/types/estimated-minutes'
+import { useClock } from '@/hooks/use-clock'
+import { BOOKS_COLORS as COLORS } from '@/utils/colors/book'
 
-export default function PushModal() {
+export default function PushModal( { columnId }: { columnId: string } ) {
   const { close } = useModal()
+  const [title, setTitle] = useState('')
+  const [showTitleError, setShowTitleError] = useState(false)
+  const [minutesRaw, setMinutesRaw] = useState('')
+  const [minutesIssue, setMinutesIssue] = useState(EstimatedMinutesIssue.None)
+  const [link, setLink] = useState('')
+  const [isImportant, setIsImportant] = useState(false)
+
+  const { now: nowISO } = useClock()
 
   function submit() {
+
+    const trimmed = title.trim()
+    if (!trimmed) {
+      setShowTitleError(true)
+      return
+    }
+    setShowTitleError(false)
+
+    const minutesValidation = validateEstimatedMinutesRaw(minutesRaw)
+    if (minutesValidation !== EstimatedMinutesIssue.None) {
+      setMinutesIssue(minutesValidation)
+      return
+    }
+    setMinutesIssue(EstimatedMinutesIssue.None)
+
+    const estimatedMinutes = Number(minutesRaw.trim())
+
+    const book: BookType = {
+      id: crypto.randomUUID(), 
+      //TODO: fix by querying it to the server
+      columnId: columnId,
+      // userId: columnId,
+      createdAt: nowISO(),
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      title: trimmed,
+      estimatedMinutes: estimatedMinutes,
+      sourceUrl: link.trim(),
+      isImportant: isImportant,
+
+      poppedAt: null,
+      isArchived: null,
+      genre: null,
+      review: null,
+      rating: null,
+      nextUrl: null,
+    }
+
+    mitenDb.addBook(book)
+
     close()
   }
 
@@ -18,66 +76,90 @@ export default function PushModal() {
       onClick={(e) => e.target === e.currentTarget && close()}
     >
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="modal-close" onClick={close} aria-label="閉じる">
+        <button type="button" className="modal-close" onClick={close} aria-label="close">
           ✕
         </button>
         <div className="modal-title" id="pushModalTitle">
-          本を積む — Push
+          Push Another Book
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="pushTitle">
-            タイトル<span className="req">*</span>
+            Title<span className="req">*</span>
           </label>
           <input
             className="form-input"
             type="text"
             id="pushTitle"
             maxLength={200}
-            placeholder="例：Clean Architecture"
+            placeholder="e.g.: Clean Architecture"
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value)
+              if (showTitleError) setShowTitleError(false)
+            }}
           />
-          <div className="form-error" id="pushTitleErr">
-            タイトルを入力してください
+          <div className={`form-error${showTitleError ? ' visible' : ''}`} id="newColTitleErr" role="alert">
+            Please enter a title
           </div>
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="pushMinutes">
-            必要時間（分）<span className="req">*</span>
+            Estimated time (minutes)<span className="req">*</span>
           </label>
           <input
             className="form-input"
             type="number"
             id="pushMinutes"
-            min={0}
-            max={99999}
-            placeholder="例：180"
+            min={1}
+            max={ESTIMATED_MINUTES_MAX}
+            placeholder="e.g.: 180"
+            value={minutesRaw}
+            onChange={(e) => {
+              setMinutesRaw(e.target.value)
+              if (minutesIssue !== EstimatedMinutesIssue.None) {
+                setMinutesIssue(EstimatedMinutesIssue.None)
+              }
+            }}
           />
-          <div className="form-error" id="pushMinutesErr">
-            0以上の整数を入力してください
+          <div
+            className={`form-error${minutesIssue !== EstimatedMinutesIssue.None ? ' visible' : ''}`}
+            id="pushMinutesErr"
+            role="alert"
+          >
+            {estimatedMinutesIssueMessage(minutesIssue)}
           </div>
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="pushLink">
-            リンク（任意）
+            Link (optional)
           </label>
           <input
             className="form-input-url"
             type="url"
             id="pushLink"
             placeholder="https://..."
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
           />
         </div>
         <div className="form-group">
           <label className="form-check-row">
-            <input className="form-checkbox" type="checkbox" id="pushImportant" />
-            <span className="form-check-label">重要な本としてマークする</span>
+            <input
+              className="form-checkbox"
+              type="checkbox"
+              id="pushImportant"
+              checked={isImportant}
+              onChange={(e) => setIsImportant(e.target.checked)}
+            />
+            <span className="form-check-label">Mark as important</span>
           </label>
         </div>
         <div className="modal-actions">
           <button type="button" className="btn-cancel" onClick={close}>
-            キャンセル
+            Cancel
           </button>
           <button type="button" className="btn-primary" onClick={submit}>
-            積む → Push
+            Push
           </button>
         </div>
       </div>

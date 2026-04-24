@@ -22,9 +22,9 @@ export default function ModalRoot() {
   return createPortal(
     <>
       {modal.type === 'addCol' && <AddColumnModal />}
-      {modal.type === 'pushCol' && <PushModal />}
-      {modal.type === 'peekCol' && <PeekModal />}
-      {modal.type === 'popCol' && <PopModal />}
+      {modal.type === 'pushCol' && <PushModal columnId={modal.columnId} />}
+      {modal.type === 'peekCol' && <PeekModal columnId={modal.columnId} />}
+      {modal.type === 'popCol' && <PopModal columnId={modal.columnId} />}
     </>,
     document.body
   )

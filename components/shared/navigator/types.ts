@@ -1,10 +1,6 @@
 export type Locale = "en" | "ja";
 
 export interface NavigatorProps {
-  isLoggedIn: boolean;
-  isOnline?: boolean;
-  username?: string;
-  locale: Locale;
   onLocaleChange: (locale: Locale) => void;
 }
 

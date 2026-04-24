@@ -3,9 +3,9 @@ import { UserBadgeProps } from "./types";
 
 /**
  * 認証状態バッジ
- * - ログアウト時: "Login" リンク
- * - ログイン + オンライン: 緑ドット + ユーザー名
- * - ログイン + オフライン: グレードット + ユーザー名
+ * - when logged out: "Login" link
+ * - when logged in + online: green dot + username
+ * - when logged in + offline: gray dot + username
  */
 export default function UserBadge({
   isLoggedIn,
@@ -25,13 +25,13 @@ export default function UserBadge({
 
   return (
     <span className="flex items-center gap-1.5 text-sm text-gray-300">
-      {/* オンライン/オフライン インジケーター */}
+      {/* online/offline indicator */}
       <span
         className={[
           "inline-block w-2 h-2 rounded-full flex-shrink-0",
           isOnline ? "bg-green-400" : "bg-gray-500",
         ].join(" ")}
-        aria-label={isOnline ? "オンライン" : "オフライン"}
+        aria-label={isOnline ? "online" : "offline"}
       />
       <span className="max-w-[120px] truncate">{username ?? "User"}</span>
     </span>

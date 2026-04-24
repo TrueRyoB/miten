@@ -6,39 +6,26 @@ import { NavigatorProps } from "./types";
 import UserBadge from "./UserBadge";
 import NavItem from "./NavItem";
 
-/**
- * Navigator
- *
- * Top-bar 右端に配置するドロワー型ナビゲーター。
- *
- * 使用例:
- * ```tsx
- * <Navigator
- *   isLoggedIn={true}
- *   isOnline={true}
- *   username="taro"
- *   locale="ja"
- *   onLocaleChange={(l) => router.push(pathname, { locale: l })}
- * />
- * ```
- */
 export default function Navigator({
-  isLoggedIn,
-  isOnline = false,
-  username,
-  locale,
   onLocaleChange,
 }: NavigatorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
-  // ルート変化でドロワーを閉じる
+
+  //TODO: get input info by itself
+  const [isLoggedIn] = useState(false);
+  const [isOnline] = useState(false);
+  const [username] = useState("");
+  const locale = (useParams() as { locale: Locale }).locale;
+
+  // close drawer when pathname changes
   useEffect(() => {
     setIsOpen(false);
   }, [pathname]);
 
-  // ドロワー外クリックで閉じる
+  // close drawer when clicking outside
   useEffect(() => {
     if (!isOpen) return;
 
@@ -55,7 +42,7 @@ export default function Navigator({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isOpen]);
 
-  // Escape キーで閉じる
+  // close on escape key
   useEffect(() => {
     if (!isOpen) return;
 
@@ -70,28 +57,28 @@ export default function Navigator({
   const close = () => setIsOpen(false);
 
   return (
-    // relative により、ドロワーが top-bar 直下に絶対配置される
+    // relative by containerRef, the drawer is absolutely positioned under the top-bar
     <div ref={containerRef} className="relative flex items-center gap-3">
-      {/* ① 認証ステータス（インライン表示） */}
+      {/* ① authentication status (inline display) */}
       <UserBadge
         isLoggedIn={isLoggedIn}
         isOnline={isOnline}
         username={username}
       />
 
-      {/* ② 言語切替（インライン表示） */}
+      {/* ② language switch (inline display) */}
       <button
         onClick={() => onLocaleChange(locale === "en" ? "ja" : "en")}
         className="text-xs font-medium text-gray-400 hover:text-white transition-colors px-1"
-        aria-label="言語を切り替える"
+        aria-label="Switch language"
       >
         {locale === "en" ? "EN" : "JP"}
       </button>
 
-      {/* ハンバーガーボタン */}
+      {/* hamburger button */}
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        aria-label="メニューを開く"
+        aria-label="Open menu"
         aria-expanded={isOpen}
         aria-haspopup="menu"
         className="p-1.5 rounded hover:bg-white/10 transition-colors"
@@ -114,10 +101,10 @@ export default function Navigator({
         </svg>
       </button>
 
-      {/* ドロワー */}
+      {/* drawer */}
       <div
         role="menu"
-        aria-label="ナビゲーションメニュー"
+        aria-label="Navigation menu"
         className={[
           "absolute right-0 top-[calc(100%+8px)] z-50 w-48",
           "bg-gray-900 border border-white/10 rounded-lg shadow-xl",
@@ -128,31 +115,31 @@ export default function Navigator({
             : "opacity-0 scale-95 pointer-events-none",
         ].join(" ")}
       >
-        {/* ③ User Guide */}
+        {/* ③ user guide */}
         <NavItem label="User Guide" href="/guide" onClose={close} />
 
-        {/* ④ FAQ */}
+        {/* ④ faq */}
         <NavItem label="FAQ" href="/faq" onClose={close} />
 
-        {/* ⑤ Feedback */}
+        {/* ⑤ feedback */}
         <NavItem label="Feedback" href="/feedback" onClose={close} />
 
-        {/* ログイン時のみ表示 ---------------------------------- */}
+        {/* only show when logged in ---------------------------------- */}
         {isLoggedIn && (
-          <>
+          <>  
             <div className="my-1 border-t border-white/10" />
 
-            {/* ⑥ Theme */}
+            {/* ⑥ theme */}
             <NavItem
               label="Theme"
               onClose={close}
               onClick={() => {
-                // TODO: テーマ切替ロジックを実装
-                // 例: setTheme(theme === "dark" ? "light" : "dark")
+                // TODO: implement theme switch logic
+                // example: setTheme(theme === "dark" ? "light" : "dark")
               }}
             />
 
-            {/* ⑦ Public Settings */}
+            {/* ⑦ public settings */}
             <NavItem
               label="Public Settings"
               href="/settings/public"

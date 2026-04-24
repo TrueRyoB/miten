@@ -8,12 +8,9 @@ import { useParams, usePathname, useRouter } from "next/navigation";
 export default function TopBar() {
   const router = useRouter();
   const pathname = usePathname();
-  const locale = (useParams() as { locale: Locale }).locale;
-  const [isLoggedIn] = useState(false);
-  const [isOnline] = useState(false);
-  const [username] = useState("");
   const onLocaleChange = (l: Locale) =>
     router.push(`${pathname}?locale=${l}`, { scroll: false });
+
   return (
     <>
     <style>{`
@@ -71,7 +68,7 @@ export default function TopBar() {
         <div className="topbar-sep"></div>
         <div className="topbar-sub">TSUNDOKU MANAGER</div>
         <div className="topbar-nav-wrapper">
-          <Navigator isLoggedIn={isLoggedIn} isOnline={isOnline} username={username} locale={locale} onLocaleChange={onLocaleChange} />
+          <Navigator onLocaleChange={onLocaleChange} />
         </div>
     </header>
     </>

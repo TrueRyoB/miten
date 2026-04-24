@@ -15,27 +15,8 @@ function isoNow(): string {
 }
 
 /*
-  Supabase (run in SQL editor). Adjust table name if you prefer.
-
-  create table public.miten_snapshots (
-    user_id uuid primary key references auth.users (id) on delete cascade,
-    payload jsonb not null default '{"columns":[]}'::jsonb,
-    updated_at timestamptz not null default now()
-  );
-
-  alter table public.miten_snapshots enable row level security;
-
-  create policy "miten_select_own"
-    on public.miten_snapshots for select
-    using (auth.uid() = user_id);
-
-  create policy "miten_insert_own"
-    on public.miten_snapshots for insert
-    with check (auth.uid() = user_id);
-
-  create policy "miten_update_own"
-    on public.miten_snapshots for update
-    using (auth.uid() = user_id);
+  Cloud table for sync — source of truth: supabase/migrations/20260423140000_miten_snapshots.sql
+  (run `supabase db push` or paste that file into Dashboard → SQL Editor).
 */
 
 const REMOTE_TABLE = "miten_snapshots";
@@ -273,7 +254,18 @@ class MitenDbService implements MitenDatabase {
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (pullError) return;
+    if (pullError) {
+      const msg = pullError.message ?? "";
+      const missingTable =
+        pullError.code === "PGRST205" ||
+        /Could not find the table/i.test(msg);
+      if (missingTable && process.env.NODE_ENV === "development") {
+        console.warn(
+          `[miten] Table "${REMOTE_TABLE}" is missing on Supabase. Run supabase/migrations/20260423140000_miten_snapshots.sql (or paste the DDL comment at the top of lib/miten-db.ts into the SQL editor).`
+        );
+      }
+      return;
+    }
 
     const local = this.envelope;
 

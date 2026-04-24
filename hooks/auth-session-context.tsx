@@ -137,10 +137,11 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
         .eq("id", user.id)
         .maybeSingle();
 
-      if (!isMounted || error) return;
-      if (data?.username && typeof data.username === "string") {
-        setDbUsername(data.username.trim());
+      if (!isMounted || error || !data?.username || typeof data.username !== "string") {
+        console.error("Error fetching username", error);
+        return;
       }
+      setDbUsername(data.username.trim());
     })();
 
     return () => {

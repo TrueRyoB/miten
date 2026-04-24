@@ -1,14 +1,15 @@
+'use client'
+
 import { createPortal } from 'react-dom'
 
-import { PopModal, PushModal, PeekModal } from '@/components/main'
-import type { ModalState } from '@/hooks/modal-context'
+import { useModal } from '@/hooks/modal-context'
+import PushModal from './push-modal'
+import PeekModal from './peek-modal'
+import PopModal from './pop-modal'
 
-type ModalRootProps = {
-  modal: ModalState
-  close: () => void
-}
+export default function ModalRoot() {
+  const { modal } = useModal()
 
-export default function ModalRoot({ modal, close: _close }: ModalRootProps) {
   if (modal.type === null) return null
 
   return createPortal(

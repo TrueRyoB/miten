@@ -1,4 +1,10 @@
+'use client'
+
+import { useModal } from '@/hooks/modal-context'
+
 export default function Board() {
+    const { open } = useModal()
+
     return (
         <>
             <style>{`
@@ -29,7 +35,14 @@ export default function Board() {
 
             `}</style>
             <div className="board-wrap">
-                <div className="shelf-surface" id="board"></div>
+                <div className="shelf-surface" id="board">
+                    {/* DB.stacks.forEach(stack) => board.appendChild(buildColumn(stack)) */}
+
+                    <button type="button" className="add-col-btn" onClick={() => open({ type: 'addCol' })} aria-label="New Column">
+                        <span className="plus-icon">+</span>
+                        <span className="plus-label">New Column</span>
+                    </button>
+                </div>
             </div>
         </> 
     )

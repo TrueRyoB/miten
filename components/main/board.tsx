@@ -1,13 +1,24 @@
 'use client'
 
-import { useModal } from '@/hooks/modal-context'
+import { useEffect, useState } from 'react'
+import AddColumnSection from './add-column-section'
+import { mitenDb } from '@/lib/miten-db'
+import Column from './column'
+import type { Column as ColumnType } from '@/types/column'
 
 export default function Board() {
-    const { open } = useModal()
+  const [columns, setColumns] = useState<ColumnType[]>([])
 
-    return (
-        <>
-            <style>{`
+  useEffect(() => {
+    setColumns(mitenDb.getPayload().columns)
+    return mitenDb.subscribe((env) => {
+      setColumns(env.payload.columns)
+    })
+  }, [])
+
+  return (
+    <>
+      <style>{`
                 .board-wrap {
                     position: relative;
                     z-index: 2;
@@ -34,16 +45,14 @@ export default function Board() {
                 }
 
             `}</style>
-            <div className="board-wrap">
-                <div className="shelf-surface" id="board">
-                    {/* DB.stacks.forEach(stack) => board.appendChild(buildColumn(stack)) */}
-
-                    <button type="button" className="add-col-btn" onClick={() => open({ type: 'addCol' })} aria-label="New Column">
-                        <span className="plus-icon">+</span>
-                        <span className="plus-label">New Column</span>
-                    </button>
-                </div>
-            </div>
-        </> 
-    )
+      <div className="board-wrap">
+        <div className="shelf-surface" id="board">
+          {columns.map((column) => (
+            <Column key={column.id} column={column} />
+          ))}
+          <AddColumnSection />
+        </div>
+      </div>
+    </>
+  )
 }

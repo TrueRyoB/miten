@@ -1,31 +1,24 @@
 'use client'
 
-function closeModal(id: string) {
-  const el = document.getElementById(id)
-  if (el) (el as HTMLElement).style.display = 'none'
-}
-
-function submitPush() {
-  closeModal('pushModal')
-}
+import { useModal } from '@/hooks/modal-context'
 
 export default function PushModal() {
+  const { close } = useModal()
+
+  function submit() {
+    close()
+  }
+
   return (
     <div
       className="modal-overlay"
-      id="pushModal"
-      style={{ display: 'none' }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="pushModalTitle"
+      onClick={(e) => e.target === e.currentTarget && close()}
     >
-      <div className="modal">
-        <button
-          type="button"
-          className="modal-close"
-          onClick={() => closeModal('pushModal')}
-          aria-label="閉じる"
-        >
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="modal-close" onClick={close} aria-label="閉じる">
           ✕
         </button>
         <div className="modal-title" id="pushModalTitle">
@@ -80,14 +73,10 @@ export default function PushModal() {
           </label>
         </div>
         <div className="modal-actions">
-          <button
-            type="button"
-            className="btn-cancel"
-            onClick={() => closeModal('pushModal')}
-          >
+          <button type="button" className="btn-cancel" onClick={close}>
             キャンセル
           </button>
-          <button type="button" className="btn-primary" onClick={submitPush}>
+          <button type="button" className="btn-primary" onClick={submit}>
             積む → Push
           </button>
         </div>

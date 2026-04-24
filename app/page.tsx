@@ -7,6 +7,7 @@ import Board from '@/components/main/board'
 import ShelfPlank from '@/components/main/shelf-plank'
 import { ModalProvider } from '@/hooks/modal-context'
 import ModalRoot from '@/components/main/modal-root'
+import MitenDbHydrate from '@/components/main/miten-db-hydrate'
 
 export default async function Page() {
   // const cookieStore = await cookies()
@@ -16,6 +17,7 @@ export default async function Page() {
 
   return (
     <ModalProvider>
+      <MitenDbHydrate />
       <Background />
       <TopBar />
       <Board />

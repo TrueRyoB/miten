@@ -184,3 +184,11 @@ body {
   transition: background .15s;
 }
 .btn-danger:hover { background: #7e3c2c; }
+
+/* ═══════════════════════════════════════════
+   SCROLLBAR
+═══════════════════════════════════════════ */
+.shelf-surface::-webkit-scrollbar { height: 6px; }
+.shelf-surface::-webkit-scrollbar-track { background: rgba(0,0,0,.3); }
+.shelf-surface::-webkit-scrollbar-thumb { background: rgba(160,107,60,.4); border-radius: 3px; }
+.shelf-surface::-webkit-scrollbar-thumb:hover { background: rgba(160,107,60,.7); }

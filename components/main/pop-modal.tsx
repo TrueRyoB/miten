@@ -1,15 +1,14 @@
 'use client'
 
-function closeModal(id: string) {
-  const el = document.getElementById(id)
-  if (el) (el as HTMLElement).style.display = 'none'
-}
-
-function confirmPop() {
-  closeModal('popModal')
-}
+import { useModal } from '@/hooks/modal-context'
 
 export default function PopModal() {
+  const { close } = useModal()
+
+  function confirmPop() {
+    close()
+  }
+
   return (
     <>
       <style>{`
@@ -18,19 +17,13 @@ export default function PopModal() {
         `}</style>
       <div
         className="modal-overlay"
-        id="popModal"
-        style={{ display: 'none' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="popModalTitle"
+        onClick={(e) => e.target === e.currentTarget && close()}
       >
-        <div className="modal">
-          <button
-            type="button"
-            className="modal-close"
-            onClick={() => closeModal('popModal')}
-            aria-label="閉じる"
-          >
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="modal-close" onClick={close} aria-label="閉じる">
             ✕
           </button>
           <div className="modal-title" id="popModalTitle">
@@ -41,11 +34,7 @@ export default function PopModal() {
             <div className="confirm-sub">この操作は取り消せません。</div>
           </div>
           <div className="modal-actions">
-            <button
-              type="button"
-              className="btn-cancel"
-              onClick={() => closeModal('popModal')}
-            >
+            <button type="button" className="btn-cancel" onClick={close}>
               キャンセル
             </button>
             <button type="button" className="btn-danger" onClick={confirmPop}>

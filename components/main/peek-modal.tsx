@@ -1,11 +1,10 @@
 'use client'
 
-function closeModal(id: string) {
-  const el = document.getElementById(id)
-  if (el) (el as HTMLElement).style.display = 'none'
-}
+import { useModal } from '@/hooks/modal-context'
 
 export default function PeekModal() {
+  const { close } = useModal()
+
   return (
     <>
       <style>{`
@@ -30,19 +29,13 @@ export default function PeekModal() {
         `}</style>
       <div
         className="modal-overlay"
-        id="peekModal"
-        style={{ display: 'none' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="peekModalTitle"
+        onClick={(e) => e.target === e.currentTarget && close()}
       >
-        <div className="modal">
-          <button
-            type="button"
-            className="modal-close"
-            onClick={() => closeModal('peekModal')}
-            aria-label="閉じる"
-          >
+        <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="modal-close" onClick={close} aria-label="閉じる">
             ✕
           </button>
           <div className="modal-title" id="peekModalTitle">
@@ -50,11 +43,7 @@ export default function PeekModal() {
           </div>
           <div id="peekContent" />
           <div className="modal-actions">
-            <button
-              type="button"
-              className="btn-cancel"
-              onClick={() => closeModal('peekModal')}
-            >
+            <button type="button" className="btn-cancel" onClick={close}>
               閉じる
             </button>
           </div>

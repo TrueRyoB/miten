@@ -37,6 +37,9 @@ export interface MitenDatabase {
   subscribe(listener: MitenDbListener): () => void;
   addColumn(column: Column): void;
   addBook(book: Book): void;
+  popColumn(columnId: string): void;
+  peekColumn(columnId: string): Book | null;
+  removeColumn(columnId: string): void;
   /** Pull remote snapshot, merge with local (LWW), push if local wins. No-op if offline / no session / no Supabase. */
   sync(): Promise<void>;
 }

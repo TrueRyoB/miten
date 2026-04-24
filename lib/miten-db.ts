@@ -9,6 +9,11 @@ import type {
 } from "@/types/db";
 import { DB_SCHEMA_VERSION, MITEN_DB_STORAGE_KEY } from "@/types/db";
 
+/** Wall-clock ISO timestamps for persistence (hooks cannot run in this module). */
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
 /*
   Supabase (run in SQL editor). Adjust table name if you prefer.
 
@@ -89,7 +94,7 @@ function pickNewer(a: DbEnvelope, b: DbEnvelope): DbEnvelope {
 
 class MitenDbService implements MitenDatabase {
   private envelope: DbEnvelope;
-  private listeners = new Set<MitenDbListener>();
+  private listeners = new Set<MitenDbListener>(); 
 
   constructor() {
     this.envelope = readLocal() ?? emptyEnvelope();
@@ -126,6 +131,29 @@ class MitenDbService implements MitenDatabase {
     void this.sync();
   }
 
+  peekColumn(columnId: string): Book | null {
+    const { columns } = this.envelope.payload;
+    const colIndex = columns.findIndex((c) => c.id === columnId);
+    if (colIndex === -1) {
+      console.warn(`peekColumn: no column with id "${columnId}"`);
+      return null;
+    }
+    const column = columns[colIndex];
+    if (column.books.length === 0) {
+      console.warn(`peekColumn: no books in column "${columnId}"`);
+      return null;
+    }
+
+    //TODO: return the latest book unpopped
+    for (let i = column.books.length - 1; i >= 0; i--) {
+      if (!column.books[i].poppedAt) {
+        return column.books[i];
+      }
+    }
+    console.warn(`peekColumn: no unpopped books in column "${columnId}"`);
+    return null;
+  }
+
   addBook(book: Book): void {
     const { columns } = this.envelope.payload;
     const colIndex = columns.findIndex((c) => c.id === book.columnId);
@@ -142,12 +170,64 @@ class MitenDbService implements MitenDatabase {
 
     this.envelope = {
       version: DB_SCHEMA_VERSION,
-      updatedAt: new Date().toISOString(),
+      updatedAt: isoNow(),
       payload: { columns: nextColumns },
     };
     writeLocal(this.envelope);
     this.notify();
     void this.sync();
+  }
+
+  //TODO: fix this
+  popColumn(columnId: string): void {
+    const { columns } = this.envelope.payload;
+    const colIndex = columns.findIndex((c) => c.id === columnId);
+    if (colIndex === -1) {
+      console.warn(`popColumn: no column with id "${columnId}"`);
+      return;
+    }
+    const column = columns[colIndex];
+    
+    const poppedAt = isoNow();
+    let popped = false;
+    for (let i = column.books.length - 1; i >= 0; i--) {
+      if (!column.books[i].poppedAt) {
+        column.books[i].poppedAt = poppedAt;
+        popped = true;
+        break;
+      }
+    }
+    if (!popped) {
+      console.warn(`popColumn: no unpopped books in column "${columnId}"`);
+      return;
+    }
+    this.envelope = {
+      version: DB_SCHEMA_VERSION,
+      updatedAt: poppedAt,
+      payload: { columns },
+    };
+    writeLocal(this.envelope);
+    this.notify();
+    void this.sync();
+  }
+
+  removeColumn(columnId: string): void {
+    const { columns } = this.envelope.payload;
+    const colIndex = columns.findIndex((c) => c.id === columnId);
+    if (colIndex === -1) {
+      console.warn(`removeColumn: no column with id "${columnId}"`);
+      return;
+    }
+    columns.splice(colIndex, 1);
+    this.envelope = {
+      version: DB_SCHEMA_VERSION,
+      updatedAt: isoNow(),
+      payload: { columns },
+    };
+    writeLocal(this.envelope);
+    this.notify();
+    void this.sync();
+    console.log("removed column ", columnId);
   }
 
   async sync(): Promise<void> {

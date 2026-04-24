@@ -4,6 +4,7 @@ type Clock = {
     now: () => string;
     nowMs: () => number;
     sync: (serverTimeISO: string, sentAt?: number) => void;
+    toLocalString: (date: string) => string;
 }
 
 export function useClock(): Clock {
@@ -40,5 +41,9 @@ export function useClock(): Clock {
       offsetRef.current = adjustedServer - now
     }, [])
   
-    return { now, nowMs, sync }
+    const toLocalString = useCallback((date: string) => {
+      return new Date(date).toLocaleString('ja-JP')
+    }, [])
+
+    return { now, nowMs, sync, toLocalString }
 }

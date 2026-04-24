@@ -11,19 +11,19 @@ export default function Column({ column }: { column: ColumnType }) {
     const color = column.color;
 
     function startEditTitle(id: string, element: HTMLDivElement) {
-        console.log(id, element);
+        //TODO: do something
     }
     function openDeleteColModal(id: string) {
-        console.log(id);
+        open({ type: 'deleteCol', columnId: id });
     }
     function openPushModal(id: string) {
         open({ type: 'pushCol', columnId: id });
     }
     function openPeekModal(id: string) {
-        console.log(id);
+        open({ type: 'peekCol', columnId: id });
     }
     function openPopModal(id: string) {
-        console.log(id);
+        open({ type: 'popCol', columnId: id });
     }
     function totalEstimatedMinutes(books: BookType[]) {
         return books.reduce((acc, book) => acc + book.estimatedMinutes, 0);

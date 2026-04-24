@@ -1,9 +1,16 @@
 'use client'
 
 import { useModal } from '@/hooks/modal-context'
+import { useClock } from '@/hooks/use-clock'
+import { mitenDb } from '@/lib/miten-db'
+import type { Book as BookType } from '@/types/book'
+import { fmtTime } from '@/utils/data-to-ui'
 
 export default function PeekModal({ columnId: _columnId }: { columnId: string }) {
   const { close } = useModal()
+
+  const book : BookType | null = mitenDb.peekColumn(_columnId)
+  const { toLocalString } = useClock()
 
   return (
     <>
@@ -35,16 +42,38 @@ export default function PeekModal({ columnId: _columnId }: { columnId: string })
         onClick={(e) => e.target === e.currentTarget && close()}
       >
         <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <button type="button" className="modal-close" onClick={close} aria-label="閉じる">
+          <button type="button" className="modal-close" onClick={close} aria-label="close">
             ✕
           </button>
           <div className="modal-title" id="peekModalTitle">
-            一番上の本
+            Book Details
           </div>
-          <div id="peekContent" />
+          {book && (
+          <div id="peekContent">
+          <div className="peek-field">
+            <div className="peek-label">Title</div>
+            <div className="peek-value" style={{ fontFamily: 'Shippori Mincho', fontSize: '16px', fontWeight: '500' }}>{book.title}</div>
+          </div>
+          <div className="peek-field">
+            <div className="peek-label">Estimated Time</div>
+            <div className="peek-value">{fmtTime(book.estimatedMinutes)}</div>
+          </div>
+          {book.sourceUrl ? <div className="peek-field"><div className="peek-label">Link</div><div className="peek-value"><a href={book.sourceUrl} target="_blank" rel="noopener">{book.sourceUrl}</a></div></div> : ''}
+          <div className="peek-field">
+            <div className="peek-label">Important</div>
+            <div className="peek-badge-row">
+              {book.isImportant ? <span className="badge-important-modal">Important</span> : <span style={{ color: 'var(--modal-faint)', fontSize: '13px' }}>—</span>}
+            </div>
+          </div>
+          <div className="peek-field">
+            <div className="peek-label">Added At</div>
+            <div className="peek-value" style={{ fontSize: '12px', color: 'var(--modal-muted)' }}>{toLocalString(book.createdAt)}</div>
+            </div>
+            </div>
+          )}
           <div className="modal-actions">
             <button type="button" className="btn-cancel" onClick={close}>
-              閉じる
+              close
             </button>
           </div>
         </div>

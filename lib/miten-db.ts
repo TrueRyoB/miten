@@ -150,7 +150,6 @@ class MitenDbService implements MitenDatabase {
       return null;
     }
 
-    //TODO: return the latest book unpopped
     for (let i = column.books.length - 1; i >= 0; i--) {
       if (!column.books[i].poppedAt) {
         return column.books[i];
@@ -170,7 +169,7 @@ class MitenDbService implements MitenDatabase {
 
     const nextColumns = columns.map((col, i) =>
       i === colIndex
-        ? { ...col, books: [book, ...col.books] }
+        ? { ...col, books: [...col.books, book] }
         : col
     );
 

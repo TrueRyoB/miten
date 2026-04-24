@@ -281,7 +281,7 @@ export default function Column({ column }: {column: ColumnType}) {
           {isEmpty ? (
             <div className="col-empty">No books yet</div>
           ) : (
-            unpopped.map((book, i) => (
+            [...unpopped].reverse().map((book, i) => (
               <BookSpine key={book.id} book={book} isTop={i === 0} />
             ))
           )}

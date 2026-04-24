@@ -48,9 +48,9 @@ function readDisplayCache(): DisplayCache | null {
       o.displayName.trim()
     ) {
       return { userId: o.userId, displayName: o.displayName.trim() };
-    }
-  } catch {
-    /* ignore */
+    } 
+  } catch (error) {
+    console.error("Error reading display cache", error);
   }
   return null;
 }
@@ -60,7 +60,7 @@ function writeDisplayCache(entry: DisplayCache): void {
   try {
     localStorage.setItem(DISPLAY_CACHE_KEY, JSON.stringify(entry));
   } catch {
-    /* quota / private mode */
+    console.error("Error writing display cache");
   }
 }
 
@@ -69,7 +69,7 @@ function clearDisplayCache(): void {
   try {
     localStorage.removeItem(DISPLAY_CACHE_KEY);
   } catch {
-    /* ignore */
+    console.error("Error clearing display cache");
   }
 }
 

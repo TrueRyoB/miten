@@ -36,6 +36,7 @@ export interface MitenDatabase {
   getPayload(): DB;
   subscribe(listener: MitenDbListener): () => void;
   addColumn(column: Column): void;
+  updateColumnLabel(columnId: string, label: string): void;
   addBook(book: Book): void;
   popColumn(columnId: string): void;
   peekColumn(columnId: string): Book | null;

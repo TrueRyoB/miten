@@ -131,6 +131,31 @@ class MitenDbService implements MitenDatabase {
     void this.sync();
   }
 
+  updateColumnLabel(columnId: string, label: string): void {
+    const trimmed = label.trim();
+    if (!trimmed) {
+      console.warn(`updateColumnLabel: empty label for column "${columnId}"`);
+      return;
+    }
+    const { columns } = this.envelope.payload;
+    const colIndex = columns.findIndex((c) => c.id === columnId);
+    if (colIndex === -1) {
+      console.warn(`updateColumnLabel: no column with id "${columnId}"`);
+      return;
+    }
+    const nextColumns = columns.map((col, i) =>
+      i === colIndex ? { ...col, label: trimmed } : col
+    );
+    this.envelope = {
+      version: DB_SCHEMA_VERSION,
+      updatedAt: isoNow(),
+      payload: { columns: nextColumns },
+    };
+    writeLocal(this.envelope);
+    this.notify();
+    void this.sync();
+  }
+
   peekColumn(columnId: string): Book | null {
     const { columns } = this.envelope.payload;
     const colIndex = columns.findIndex((c) => c.id === columnId);

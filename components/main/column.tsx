@@ -1,38 +1,76 @@
+'use client'
+
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Column as ColumnType } from '@/types/column'
 import type { Book as BookType } from '@/types/book'
 import { useModal } from '@/hooks/modal-context'
 import BookSpine from './bookspine'
 import { fmtTime } from '@/utils/data-to-ui'
+import { mitenDb } from '@/lib/miten-db'
 
-export default function Column({ column }: { column: ColumnType }) {
-    const { open } = useModal()
 
-    const cntUnpopped = column.books.filter((book) => !book.poppedAt).length;
-    const isEmpty = cntUnpopped === 0;
-    const color = column.color;
+export default function Column({ column }: {column: ColumnType}) {
+  const { open } = useModal()
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [draftLabel, setDraftLabel] = useState(column.label)
+  const titleInputRef = useRef<HTMLInputElement>(null)
 
-    function startEditTitle(id: string, element: HTMLDivElement) {
-        //TODO: do something
-    }
-    function openDeleteColModal(id: string) {
-        open({ type: 'deleteCol', columnId: id });
-    }
-    function openPushModal(id: string) {
-        open({ type: 'pushCol', columnId: id });
-    }
-    function openPeekModal(id: string) {
-        open({ type: 'peekCol', columnId: id });
-    }
-    function openPopModal(id: string) {
-        open({ type: 'popCol', columnId: id });
-    }
-    function totalEstimatedMinutes(books: BookType[]) {
-        return books.filter((book) => !book.poppedAt).reduce((acc, book) => acc + book.estimatedMinutes, 0);
-    }   
+  useEffect(() => {
+    if (!editingTitle) setDraftLabel(column.label)
+  }, [column.label, editingTitle])
 
-    return (
-        <>
-        <style>{`
+  useEffect(() => {
+    if (editingTitle) titleInputRef.current?.focus()
+  }, [editingTitle])
+
+  function startEditTitle() {
+    setDraftLabel(column.label)
+    setEditingTitle(true)
+  }
+
+  function cancelTitleEdit() {
+    setDraftLabel(column.label)
+    setEditingTitle(false)
+  }
+
+  function handleTitleBlur() {
+    const trimmed = draftLabel.trim()
+    setEditingTitle(false)
+    if (!trimmed) {
+      setDraftLabel(column.label)
+      return
+    }
+    if (trimmed === column.label) return
+    mitenDb.updateColumnLabel(column.id, trimmed)
+  }
+
+  const cntUnpopped = column.books.filter((book) => !book.poppedAt).length
+  const isEmpty = cntUnpopped === 0
+  const color = column.color
+
+  function openDeleteColModal(id: string) {
+    open({ type: 'deleteCol', columnId: id })
+  }
+  function openPushModal(id: string) {
+    open({ type: 'pushCol', columnId: id })
+  }
+  function openPeekModal(id: string) {
+    open({ type: 'peekCol', columnId: id })
+  }
+  function openPopModal(id: string) {
+    open({ type: 'popCol', columnId: id })
+  }
+  function totalEstimatedMinutes(books: BookType[]) {
+    return books
+      .filter((book) => !book.poppedAt)
+      .reduce((acc, book) => acc + book.estimatedMinutes, 0)
+  }
+
+  const unpopped = column.books.filter((b) => !b.poppedAt)
+
+  return (
+    <>
+      <style>{`
             .column {
                 width: var(--col-w);
                 flex-shrink: 0;
@@ -178,31 +216,77 @@ export default function Column({ column }: { column: ColumnType }) {
                 }
 
         `}</style>
-        <div className="column">
-            <div className="col-header" style={{ '--col-color': color } as React.CSSProperties}>
-            <div className="col-header-top">
-                <div className="col-title" title="double click to edit" onDoubleClick={(e) => startEditTitle(column.id, e.currentTarget as HTMLDivElement)}>{column.label}</div>
-                    {isEmpty ? <button className="col-delete-btn" onClick={() => openDeleteColModal(column.id)} title="remove column">✕</button> : ''}
-                </div>
-                <div className="col-meta">
-                    <span>{cntUnpopped} books</span>
-                    <span className="col-meta-sep">·</span>
-                        <span>{fmtTime(totalEstimatedMinutes(column.books))}</span>
-                </div>
-                <div className="col-actions">
-                    <button className="col-btn" onClick={() => openPushModal(column.id)}>+ Push</button>
-                    <button className="col-btn" onClick={() => openPeekModal(column.id)} disabled={isEmpty}>Peek</button>
-                    <button className="col-btn" onClick={() => openPopModal(column.id)} disabled={isEmpty}>Pop</button>
-                </div>
-            </div>
-            <div className="col-stack" id={`stack-${column.id}`}>
-                {isEmpty ? <div className="col-empty">No books yet</div> : 
-                    column.books.map((book, i) => (
-                        !book.poppedAt && <BookSpine key={book.id} book={book} isTop={i === 0} />
-                    ))
-                }
-            </div>
+      <div className="column">
+        <div className="col-header" style={{ '--col-color': color } as CSSProperties}>
+          <div className="col-header-top">
+            {editingTitle ? (
+              <input
+                ref={titleInputRef}
+                className="col-title-input"
+                aria-label="Column title"
+                value={draftLabel}
+                onChange={(e) => setDraftLabel(e.target.value)}
+                onBlur={handleTitleBlur}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    titleInputRef.current?.blur()
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    cancelTitleEdit()
+                  }
+                }}
+              />
+            ) : (
+              <div
+                className="col-title"
+                title="Double-click to edit"
+                onDoubleClick={startEditTitle}
+              >
+                {column.label}
+              </div>
+            )}
+            {isEmpty ? (
+              <button
+                type="button"
+                className="col-delete-btn"
+                onClick={() => openDeleteColModal(column.id)}
+                title="remove column"
+              >
+                ✕
+              </button>
+            ) : (
+              ''
+            )}
+          </div>
+          <div className="col-meta">
+            <span>{cntUnpopped} books</span>
+            <span className="col-meta-sep">·</span>
+            <span>{fmtTime(totalEstimatedMinutes(column.books))}</span>
+          </div>
+          <div className="col-actions">
+            <button type="button" className="col-btn" onClick={() => openPushModal(column.id)}>
+              + Push
+            </button>
+            <button type="button" className="col-btn" onClick={() => openPeekModal(column.id)} disabled={isEmpty}>
+              Peek
+            </button>
+            <button type="button" className="col-btn" onClick={() => openPopModal(column.id)} disabled={isEmpty}>
+              Pop
+            </button>
+          </div>
         </div>
-        </>
-    );
+        <div className="col-stack" id={`stack-${column.id}`}>
+          {isEmpty ? (
+            <div className="col-empty">No books yet</div>
+          ) : (
+            unpopped.map((book, i) => (
+              <BookSpine key={book.id} book={book} isTop={i === 0} />
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  )
 }

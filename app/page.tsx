@@ -1,6 +1,11 @@
 import { createClient } from '@/utils/supabase/server'
 import { cookies } from 'next/headers'
-import Placeholder from '@/components/placeholder'
+import Placeholder from '@/components/shared/placeholder'
+import Background from '@/components/main/background'
+import TopBar from '@/components/shared/top-bar'
+import Board from '@/components/main/board'
+import ShelfPlank from '@/components/main/shelf-plank'
+import PushModal from '@/components/main/push-modal'
 
 export default async function Page() {
   // const cookieStore = await cookies()
@@ -9,6 +14,13 @@ export default async function Page() {
   // const { data: todos } = await supabase.from('todos').select()
 
   return (
-    <Placeholder />
+    <>
+      <Background />
+      <TopBar />
+      <Board />
+      <ShelfPlank />  
+      <Placeholder />
+      <PushModal />
+    </>
   )
 }

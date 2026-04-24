@@ -3,7 +3,47 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* main room colors */
+  --shelf-wood:      #7a5230;
+  --shelf-dark:      #5c3d1e;
+  --shelf-light:     #a06b3c;
+  --shelf-edge:      #3d2510;
+  --room-bg-top:     #1a1008;
+  --room-bg-mid:     #2e1c0a;
+  --room-bg-low:     #3d2510;
+
+  --col-w:   240px;
+  --col-gap:  28px;
+
+  --ink-white:  rgba(255,255,255,.92);
+  --ink-dim:    rgba(255,255,255,.60);
+  --ink-faint:  rgba(255,255,255,.35);
+
+  /* modal colors */
+  --modal-bg:   #fdf8f0;
+  --modal-ink:  #2c2416;
+  --modal-muted:#7a6e5f;
+  --modal-faint:#b5a99a;
+  --modal-rule: #e0d8cc;
+  --modal-sage: #6b7c63;
+  --modal-terra:#9b4f3a;
+  --modal-terra-lt:#f5e8e4;
+  --shadow-modal: 0 32px 80px rgba(0,0,0,.55), 0 4px 16px rgba(0,0,0,.3);
 }
+
+/* reset and base */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Noto Serif JP', serif;
+  background: var(--room-bg-top);
+  color: #fff;
+  min-height: 100vh;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 
 @theme inline {
   --color-background: var(--background);

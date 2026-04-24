@@ -1,31 +1,47 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
-import { NavigatorProps } from "./types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAuthSession } from "@/hooks/auth-session-context";
+import { useOnlineStatus } from "@/hooks/use-online";
+import type { Locale, NavigatorProps } from "./types";
 import UserBadge from "./UserBadge";
 import NavItem from "./NavItem";
 
-export default function Navigator({
-  onLocaleChange,
-}: NavigatorProps) {
+function localeFromSearch(searchParams: URLSearchParams): Locale {
+  return (searchParams.get("locale") ?? "en") as Locale;
+}
+
+export default function Navigator({ onLocaleChange }: NavigatorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
+  const locale = useMemo(
+    () => localeFromSearch(searchParams),
+    [searchParams]
+  );
 
-  //TODO: get input info by itself
-  const [isLoggedIn] = useState(false);
-  const [isOnline] = useState(false);
-  const [username] = useState("");
-  const locale = (useParams() as { locale: Locale }).locale;
+  const { isLoggedIn, displayName } = useAuthSession();
+  const isOnline = useOnlineStatus();
 
-  // close drawer when pathname changes
+  function applyLocale(next: Locale) {
+    if (onLocaleChange) {
+      onLocaleChange(next);
+      return;
+    }
+    const q = new URLSearchParams(searchParams.toString());
+    q.set("locale", next);
+    const qs = q.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
   useEffect(() => {
     setIsOpen(false);
   }, [pathname]);
 
-  // close drawer when clicking outside
   useEffect(() => {
     if (!isOpen) return;
 
@@ -42,7 +58,6 @@ export default function Navigator({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isOpen]);
 
-  // close on escape key
   useEffect(() => {
     if (!isOpen) return;
 
@@ -57,26 +72,24 @@ export default function Navigator({
   const close = () => setIsOpen(false);
 
   return (
-    // relative by containerRef, the drawer is absolutely positioned under the top-bar
     <div ref={containerRef} className="relative flex items-center gap-3">
-      {/* ① authentication status (inline display) */}
       <UserBadge
         isLoggedIn={isLoggedIn}
         isOnline={isOnline}
-        username={username}
+        username={displayName}
       />
 
-      {/* ② language switch (inline display) */}
       <button
-        onClick={() => onLocaleChange(locale === "en" ? "ja" : "en")}
+        type="button"
+        onClick={() => applyLocale(locale === "en" ? "ja" : "en")}
         className="text-xs font-medium text-gray-400 hover:text-white transition-colors px-1"
         aria-label="Switch language"
       >
         {locale === "en" ? "EN" : "JP"}
       </button>
 
-      {/* hamburger button */}
       <button
+        type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label="Open menu"
         aria-expanded={isOpen}
@@ -101,7 +114,6 @@ export default function Navigator({
         </svg>
       </button>
 
-      {/* drawer */}
       <div
         role="menu"
         aria-label="Navigation menu"
@@ -115,31 +127,22 @@ export default function Navigator({
             : "opacity-0 scale-95 pointer-events-none",
         ].join(" ")}
       >
-        {/* ③ user guide */}
         <NavItem label="User Guide" href="/guide" onClose={close} />
-
-        {/* ④ faq */}
         <NavItem label="FAQ" href="/faq" onClose={close} />
-
-        {/* ⑤ feedback */}
         <NavItem label="Feedback" href="/feedback" onClose={close} />
 
-        {/* only show when logged in ---------------------------------- */}
         {isLoggedIn && (
-          <>  
+          <>
             <div className="my-1 border-t border-white/10" />
 
-            {/* ⑥ theme */}
             <NavItem
               label="Theme"
               onClose={close}
               onClick={() => {
-                // TODO: implement theme switch logic
-                // example: setTheme(theme === "dark" ? "light" : "dark")
+                // TODO: theme switch
               }}
             />
 
-            {/* ⑦ public settings */}
             <NavItem
               label="Public Settings"
               href="/settings/public"

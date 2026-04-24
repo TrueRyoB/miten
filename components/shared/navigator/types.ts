@@ -1,14 +1,14 @@
 export type Locale = "en" | "ja";
 
 export interface NavigatorProps {
-  onLocaleChange: (locale: Locale) => void;
+  /** If omitted, locale is driven by `?locale=en|ja` and updated via the router. */
+  onLocaleChange?: (locale: Locale) => void;
 }
 
 export interface NavItemProps {
   label: string;
   href?: string;
   onClick?: () => void;
-  /** ドロワー内でクリック後に自動クローズするためのコールバック */
   onClose: () => void;
 }
 

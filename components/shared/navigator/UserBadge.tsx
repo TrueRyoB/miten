@@ -2,7 +2,6 @@ import Link from "next/link";
 import { UserBadgeProps } from "./types";
 
 /**
- * 認証状態バッジ
  * - when logged out: "Login" link
  * - when logged in + online: green dot + username
  * - when logged in + offline: gray dot + username
@@ -33,7 +32,7 @@ export default function UserBadge({
         ].join(" ")}
         aria-label={isOnline ? "online" : "offline"}
       />
-      <span className="max-w-[120px] truncate">{username ?? "User"}</span>
+      <span className="max-w-[120px] truncate">{username?.trim() || "user"}</span>
     </span>
   );
 }

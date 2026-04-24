@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import { extractPrettyName } from "@/utils/data-to-ui";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
@@ -47,10 +48,12 @@ function redirectAfterSignIn(
  */
 async function ensureProfileRow(
   supabase: ReturnType<typeof createServerClient>,
-  userId: string
+  userId: string,
+  email: string
 ): Promise<{ ok: true } | { ok: false; code: string }> {
   const { error } = await supabase.from(PROFILE_TABLE).upsert(
     { id: userId },
+    { username: extractPrettyName(email) },
     { onConflict: "id", ignoreDuplicates: true }
   );
 
@@ -120,7 +123,7 @@ export async function GET(request: NextRequest) {
     return redirectToLogin(request, "session_invalid", next);
   }
 
-  const profile = await ensureProfileRow(supabase, user.id);
+  const profile = await ensureProfileRow(supabase, user.id, user.email ?? "");
   if (!profile.ok) {
     return redirectToLogin(request, profile.code, next);
   }

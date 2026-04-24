@@ -1,19 +1,16 @@
-'use client';
+"use client";
 
-import { useState } from "react";
+import { Suspense } from "react";
 import Navigator from "./navigator";
-import type { Locale } from "./navigator/types";
-import { useParams, usePathname, useRouter } from "next/navigation";
+
+function TopBarNavFallback() {
+  return <div className="topbar-nav-wrapper h-[28px] w-[120px]" aria-hidden />;
+}
 
 export default function TopBar() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const onLocaleChange = (l: Locale) =>
-    router.push(`${pathname}?locale=${l}`, { scroll: false });
-
   return (
     <>
-    <style>{`
+      <style>{`
         .topbar {
             position: fixed; top: 0; left: 0; right: 0;
             height: 50px;
@@ -63,14 +60,16 @@ export default function TopBar() {
               flex-grow: 1;
             }
     `}</style>
-    <header className="topbar">
+      <header className="topbar">
         <div className="topbar-logo">美天</div>
         <div className="topbar-sep"></div>
         <div className="topbar-sub">TSUNDOKU MANAGER</div>
         <div className="topbar-nav-wrapper">
-          <Navigator onLocaleChange={onLocaleChange} />
+          <Suspense fallback={<TopBarNavFallback />}>
+            <Navigator />
+          </Suspense>
         </div>
-    </header>
+      </header>
     </>
-  )
+  );
 }

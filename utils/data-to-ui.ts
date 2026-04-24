@@ -4,3 +4,7 @@ export function fmtTime(total: number) {
     
     return (hours==0) ? minutes+" min" : (minutes==0) ? hours+" h" : hours+" h "+minutes+" m";
 }
+
+export function extractPrettyName(email: string) {
+    return email.split("@")[0] ?? "User";
+}

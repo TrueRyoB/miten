@@ -7,7 +7,8 @@ import { fmtTime } from '@/utils/data-to-ui'
 export default function Column({ column }: { column: ColumnType }) {
     const { open } = useModal()
 
-    const isEmpty = column.books.length === 0;
+    const cntUnpopped = column.books.filter((book) => !book.poppedAt).length;
+    const isEmpty = cntUnpopped === 0;
     const color = column.color;
 
     function startEditTitle(id: string, element: HTMLDivElement) {
@@ -26,7 +27,7 @@ export default function Column({ column }: { column: ColumnType }) {
         open({ type: 'popCol', columnId: id });
     }
     function totalEstimatedMinutes(books: BookType[]) {
-        return books.reduce((acc, book) => acc + book.estimatedMinutes, 0);
+        return books.filter((book) => !book.poppedAt).reduce((acc, book) => acc + book.estimatedMinutes, 0);
     }   
 
     return (
@@ -184,7 +185,7 @@ export default function Column({ column }: { column: ColumnType }) {
                     {isEmpty ? <button className="col-delete-btn" onClick={() => openDeleteColModal(column.id)} title="remove column">✕</button> : ''}
                 </div>
                 <div className="col-meta">
-                    <span>{column.books.length} books</span>
+                    <span>{cntUnpopped} books</span>
                     <span className="col-meta-sep">·</span>
                         <span>{fmtTime(totalEstimatedMinutes(column.books))}</span>
                 </div>
@@ -197,7 +198,7 @@ export default function Column({ column }: { column: ColumnType }) {
             <div className="col-stack" id={`stack-${column.id}`}>
                 {isEmpty ? <div className="col-empty">No books yet</div> : 
                     column.books.map((book, i) => (
-                        <BookSpine key={book.id} book={book} isTop={i === 0} />
+                        !book.poppedAt && <BookSpine key={book.id} book={book} isTop={i === 0} />
                     ))
                 }
             </div>

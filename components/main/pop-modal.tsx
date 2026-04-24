@@ -7,7 +7,7 @@ export default function PopModal( { columnId }: { columnId: string } ) {
   const { close } = useModal()
 
   function confirmPop() {
-    // mitenDb.popBook(columnId)
+    mitenDb.popColumn(columnId)
     close()
   }
 

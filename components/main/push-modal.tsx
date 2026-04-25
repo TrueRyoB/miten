@@ -43,10 +43,8 @@ export default function PushModal( { columnId }: { columnId: string } ) {
     const estimatedMinutes = Number(minutesRaw.trim())
 
     const book: BookType = {
-      id: crypto.randomUUID(), 
-      //TODO: fix by querying it to the server
+      id: "0", 
       columnId: columnId,
-      // userId: columnId,
       createdAt: nowISO(),
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       title: trimmed,
@@ -55,7 +53,7 @@ export default function PushModal( { columnId }: { columnId: string } ) {
       isImportant: isImportant,
 
       poppedAt: null,
-      isArchived: null,
+      isArchived: false,
       genre: null,
       review: null,
       rating: null,

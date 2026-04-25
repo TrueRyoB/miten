@@ -1,5 +1,7 @@
 import type { Column } from "./column";
 import type { Book } from "./book";
+import type { Archive } from "./archive";
+
 /*
 **************************************************
 Schema + contracts only
@@ -9,27 +11,56 @@ Schema + contracts only
 /** Canonical app document stored locally and (optionally) remotely. */
 export type DB = {
   columns: Column[];
+  archive: Archive[];
 };
 
-/** Wrapper for last-write-wins sync and future schema migrations. */
+/**
+ * Persisted envelope (localStorage). Implements lazy sync via `MitenDatabase.sync()`.
+ * @see SyncResult — stats returned after each sync run
+ */
 export type DbEnvelope = {
   payload: DB;
-  /** ISO 8601 — compared lexicographically for LWW whole-document merge. */
+  /** ISO 8601 — bookkeeping / migrations; relational sync uses row timestamps remotely. */
   updatedAt: string;
-  /** Bump when `DB` shape changes; run migrations in `lib/miten-db.ts`. */
+  /** Bump when `DB` shape changes; run migrations in consumers. */
   version: number;
 };
 
-export const DB_SCHEMA_VERSION = 1;
+export const DB_SCHEMA_VERSION = 2;
 
 export const MITEN_DB_STORAGE_KEY = "miten-db-v1";
 
+/** Nil / placeholder ids that must be remapped on first successful push (sync spec). */
+export const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+
+export function needsIdRemap(id: string): boolean {
+  return id === "0" || id === ZERO_UUID;
+}
+
 export type MitenDbListener = (envelope: DbEnvelope) => void;
+
+export type SyncResult = {
+  remappedIds: Map<string, string>;
+  pushedColumns: number;
+  pushedBooks: number;
+  pulledColumns: number;
+  pulledBooks: number;
+};
+
+export function emptySyncResult(): SyncResult {
+  return {
+    remappedIds: new Map(),
+    pushedColumns: 0,
+    pushedBooks: 0,
+    pulledColumns: 0,
+    pulledBooks: 0,
+  };
+}
 
 /**
  * Singleton database façade (implemented in `lib/miten-db.ts`).
  * - Mutations update memory + localStorage immediately (offline-capable).
- * - `sync()` pulls/pushes against Supabase when the user is signed in.
+ * - `sync()` runs Phase 1 push → Phase 2 clear local → Phase 3 pull when signed in and Supabase is configured.
  */
 export interface MitenDatabase {
   getEnvelope(): DbEnvelope;
@@ -41,6 +72,5 @@ export interface MitenDatabase {
   popColumn(columnId: string): void;
   peekColumn(columnId: string): Book | null;
   removeColumn(columnId: string): void;
-  /** Pull remote snapshot, merge with local (LWW), push if local wins. No-op if offline / no session / no Supabase. */
-  sync(): Promise<void>;
+  sync(): Promise<SyncResult>;
 }

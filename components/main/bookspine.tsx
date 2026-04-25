@@ -13,6 +13,7 @@ export default function BookSpine({ book, isTop = false }: { book: BookType; isT
     const bookColor = { '--book-color': book.color } as CSSProperties
 
     function openPeekBookModal() {
+        if (!book.columnId) return
         open({ type: 'peekCol', columnId: book.columnId })
     }
 

@@ -23,9 +23,7 @@ export default function AddColumnModal() {
     setShowError(false)
 
     const column: Column = {
-      //TODO: fix by querying it to the server
-      id: crypto.randomUUID(),
-      // userId: user.id,
+      id: "0",
       label: trimmed,
       color: COLUMNS_COLORS[Math.floor(Math.random() * COLUMNS_COLORS.length)],
       books: [],

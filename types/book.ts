@@ -1,7 +1,6 @@
 export type Book = {
     id: string;
-    // userId: string;
-    columnId: string;
+    columnId: string | null;
 
     createdAt: string;
     title: string;
@@ -13,7 +12,7 @@ export type Book = {
 
     poppedAt: string | null;
 
-    isArchived: boolean | null;
+    isArchived: boolean;
     genre: string | null;
     review: string | null;
     rating: number | null;

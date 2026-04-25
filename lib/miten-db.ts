@@ -6,25 +6,31 @@ import type {
   DbEnvelope,
   MitenDatabase,
   MitenDbListener,
+  SyncResult,
 } from "@/types/db";
-import { DB_SCHEMA_VERSION, MITEN_DB_STORAGE_KEY } from "@/types/db";
+import {
+  DB_SCHEMA_VERSION,
+  MITEN_DB_STORAGE_KEY,
+  emptySyncResult,
+  needsIdRemap,
+} from "@/types/db";
+
+const T_COL = "miten_columns";
+const T_BOOK = "miten_books";
 
 /** Wall-clock ISO timestamps for persistence (hooks cannot run in this module). */
 function isoNow(): string {
   return new Date().toISOString();
 }
 
-/*
-  Cloud table for sync — source of truth: supabase/migrations/20260423140000_miten_snapshots.sql
-  (run `supabase db push` or paste that file into Dashboard → SQL Editor).
-*/
-
-const REMOTE_TABLE = "miten_snapshots";
+function newId(): string {
+  return crypto.randomUUID();
+}
 
 function emptyEnvelope(): DbEnvelope {
   return {
-    payload: { columns: [] },
-    updatedAt: new Date(0).toISOString(),
+    payload: { columns: [], archive: [] },
+    updatedAt: isoNow(),
     version: DB_SCHEMA_VERSION,
   };
 }
@@ -36,12 +42,16 @@ function parseEnvelope(raw: unknown): DbEnvelope | null {
   if (!payload || typeof payload !== "object") return null;
   const columns = (payload as DB).columns;
   if (!Array.isArray(columns)) return null;
+  const archive = (payload as DB).archive;
   const updatedAt = o.updatedAt;
   if (typeof updatedAt !== "string") return null;
   const version = o.version;
   if (typeof version !== "number") return null;
   return {
-    payload: { columns },
+    payload: {
+      columns,
+      archive: Array.isArray(archive) ? archive : [],
+    },
     updatedAt,
     version,
   };
@@ -67,15 +77,67 @@ function writeLocal(envelope: DbEnvelope): void {
   }
 }
 
-function pickNewer(a: DbEnvelope, b: DbEnvelope): DbEnvelope {
-  if (a.updatedAt > b.updatedAt) return a;
-  if (b.updatedAt > a.updatedAt) return b;
-  return a;
+function isMissingTableError(err: { code?: string; message?: string }): boolean {
+  const msg = err.message ?? "";
+  return err.code === "PGRST205" || /Could not find the table/i.test(msg);
+}
+
+function bookToRemoteRow(book: Book, userId: string): Record<string, unknown> {
+  return {
+    id: book.id,
+    user_id: userId,
+    column_id: book.columnId,
+    title: book.title,
+    color: book.color,
+    estimated_minutes: book.estimatedMinutes,
+    source_url: book.sourceUrl.trim() ? book.sourceUrl.trim() : null,
+    is_important: book.isImportant,
+    popped_at: book.poppedAt,
+    is_archived: book.isArchived ?? false,
+    created_at: book.createdAt,
+    genre: book.genre,
+    review: book.review,
+    rating: book.rating,
+    next_url: book.nextUrl,
+  };
+}
+
+function remoteRowToBook(r: Record<string, unknown>): Book {
+  return {
+    id: r.id as string,
+    columnId: r.column_id as string,
+    createdAt: r.created_at as string,
+    title: r.title as string,
+    color: r.color as string,
+    estimatedMinutes: Number(r.estimated_minutes),
+    sourceUrl: (r.source_url as string | null) ?? "",
+    isImportant: Boolean(r.is_important),
+    poppedAt: (r.popped_at as string | null) ?? null,
+    isArchived: Boolean(r.is_archived),
+    genre: (r.genre as string | null) ?? null,
+    review: (r.review as string | null) ?? null,
+    rating:
+      r.rating != null && r.rating !== ""
+        ? Number(r.rating)
+        : null,
+    nextUrl: (r.next_url as string | null) ?? null,
+  };
+}
+
+function remoteRowToColumnShell(r: Record<string, unknown>): Column {
+  return {
+    id: r.id as string,
+    label: r.label as string,
+    color: r.color as string,
+    createdAt: r.created_at as string,
+    books: [],
+    poppedAt: null,
+  };
 }
 
 class MitenDbService implements MitenDatabase {
   private envelope: DbEnvelope;
-  private listeners = new Set<MitenDbListener>(); 
+  private listeners = new Set<MitenDbListener>();
 
   constructor() {
     this.envelope = readLocal() ?? emptyEnvelope();
@@ -98,17 +160,48 @@ class MitenDbService implements MitenDatabase {
     for (const fn of this.listeners) fn(this.envelope);
   }
 
-  //TODO: client ID match verification
+  /** Apply Phase-1 id remaps so local ids match remote before pull or retry. */
+  private applyRemaps(remapped: Map<string, string>): void {
+    if (remapped.size === 0) return;
+    const mapId = (id: string | null): string | null => {
+      if (id == null) return id;
+      return remapped.get(id) ?? id;
+    };
+    const { columns, archive } = this.envelope.payload;
+    const nextColumns = columns.map((c) => ({
+      ...c,
+      id: mapId(c.id) as string,
+      books: c.books.map((b) => ({
+        ...b,
+        id: mapId(b.id) as string,
+        columnId: mapId(b.columnId),
+      })),
+    }));
+    const nextArchive = archive.map((entry) => ({
+      books: entry.books.map((b) => ({
+        ...b,
+        id: mapId(b.id) as string,
+        columnId: mapId(b.columnId),
+      })),
+    }));
+    this.envelope = {
+      ...this.envelope,
+      updatedAt: isoNow(),
+      payload: { columns: nextColumns, archive: nextArchive },
+    };
+  }
+
   addColumn(column: Column): void {
     this.envelope = {
       version: DB_SCHEMA_VERSION,
-      updatedAt: new Date().toISOString(),
+      updatedAt: isoNow(),
       payload: {
         columns: [...this.envelope.payload.columns, column],
+        archive: this.envelope.payload.archive,
       },
     };
     writeLocal(this.envelope);
-    this.notify(); // fire-and-forget
+    this.notify();
     void this.sync();
   }
 
@@ -130,7 +223,10 @@ class MitenDbService implements MitenDatabase {
     this.envelope = {
       version: DB_SCHEMA_VERSION,
       updatedAt: isoNow(),
-      payload: { columns: nextColumns },
+      payload: {
+        columns: nextColumns,
+        archive: this.envelope.payload.archive,
+      },
     };
     writeLocal(this.envelope);
     this.notify();
@@ -168,22 +264,22 @@ class MitenDbService implements MitenDatabase {
     }
 
     const nextColumns = columns.map((col, i) =>
-      i === colIndex
-        ? { ...col, books: [...col.books, book] }
-        : col
+      i === colIndex ? { ...col, books: [...col.books, book] } : col
     );
 
     this.envelope = {
       version: DB_SCHEMA_VERSION,
       updatedAt: isoNow(),
-      payload: { columns: nextColumns },
+      payload: {
+        columns: nextColumns,
+        archive: this.envelope.payload.archive,
+      },
     };
     writeLocal(this.envelope);
     this.notify();
     void this.sync();
   }
 
-  //TODO: fix this
   popColumn(columnId: string): void {
     const { columns } = this.envelope.payload;
     const colIndex = columns.findIndex((c) => c.id === columnId);
@@ -192,7 +288,7 @@ class MitenDbService implements MitenDatabase {
       return;
     }
     const column = columns[colIndex];
-    
+
     const poppedAt = isoNow();
     let popped = false;
     for (let i = column.books.length - 1; i >= 0; i--) {
@@ -209,7 +305,10 @@ class MitenDbService implements MitenDatabase {
     this.envelope = {
       version: DB_SCHEMA_VERSION,
       updatedAt: poppedAt,
-      payload: { columns },
+      payload: {
+        columns,
+        archive: this.envelope.payload.archive,
+      },
     };
     writeLocal(this.envelope);
     this.notify();
@@ -217,91 +316,289 @@ class MitenDbService implements MitenDatabase {
   }
 
   removeColumn(columnId: string): void {
-    const { columns } = this.envelope.payload;
+    const { columns, archive } = this.envelope.payload;
     const colIndex = columns.findIndex((c) => c.id === columnId);
     if (colIndex === -1) {
       console.warn(`removeColumn: no column with id "${columnId}"`);
       return;
     }
-    columns.splice(colIndex, 1);
+
     this.envelope = {
       version: DB_SCHEMA_VERSION,
       updatedAt: isoNow(),
-      payload: { columns },
+      payload: {
+        columns: columns.filter((_, i) => i !== colIndex),
+        archive,
+      },
     };
     writeLocal(this.envelope);
     this.notify();
     void this.sync();
-    console.log("removed column ", columnId);
   }
 
-  async sync(): Promise<void> {
-    if (typeof window === "undefined") return;
+  /**
+   * Phase 1 — push local rows (provisional id remapping), optional remote prune.
+   * Apply remaps to local storage so a failed pull does not duplicate rows on retry.
+   * Phase 2 — replace local from remote pull (atomic write); equivalent to clear + fill.
+   */
+  async sync(): Promise<SyncResult> {
+    const result = emptySyncResult();
+
+    if (typeof window === "undefined") return result;
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (!url) return;
+    if (!url) return result;
 
     const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) return result;
 
-    const { data: row, error: pullError } = await supabase
-      .from(REMOTE_TABLE)
-      .select("payload, updated_at")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const uid = user.id;
 
-    if (pullError) {
-      const msg = pullError.message ?? "";
-      const missingTable =
-        pullError.code === "PGRST205" ||
-        /Could not find the table/i.test(msg);
-      if (missingTable && process.env.NODE_ENV === "development") {
-        console.warn(
-          `[miten] Table "${REMOTE_TABLE}" is missing on Supabase. Run supabase/migrations/20260423140000_miten_snapshots.sql (or paste the DDL comment at the top of lib/miten-db.ts into the SQL editor).`
-        );
+    try {
+      const pushOutcome = await this.phase1Push(supabase, uid, result);
+      if (!pushOutcome.ok) {
+        return result;
       }
-      return;
+
+      this.applyRemaps(result.remappedIds);
+      writeLocal(this.envelope);
+      this.notify();
+
+      const pull = await this.phase3BuildPayload(supabase, uid, result);
+      if (!pull.ok) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn(
+            "[miten] Pull failed; local ids are aligned with Phase 1 — retry sync().",
+            pull.error
+          );
+        }
+        return result;
+      }
+
+      this.envelope = {
+        version: DB_SCHEMA_VERSION,
+        updatedAt: isoNow(),
+        payload: pull.payload,
+      };
+      writeLocal(this.envelope);
+      this.notify();
+    } catch (e) {
+      if (
+        e &&
+        typeof e === "object" &&
+        "code" in e &&
+        isMissingTableError(e as { code?: string; message?: string })
+      ) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn(
+            `[miten] Relational tables missing. Apply supabase/migrations/20260423150000_miten_columns_books.sql`
+          );
+        }
+        return result;
+      }
+      throw e;
     }
 
-    const local = this.envelope;
+    return result;
+  }
 
-    if (!row) {
-      const { error: pushError } = await supabase.from(REMOTE_TABLE).upsert(
-        {
-          user_id: user.id,
-          payload: local.payload,
-          updated_at: local.updatedAt,
-        },
-        { onConflict: "user_id" }
-      );
-      if (!pushError) return;
-      return;
+  private async phase1Push(
+    supabase: ReturnType<typeof createClient>,
+    uid: string,
+    result: SyncResult
+  ): Promise<{ ok: boolean }> {
+    const work: Column[] = JSON.parse(
+      JSON.stringify(this.envelope.payload.columns)
+    ) as Column[];
+
+    for (const col of work) {
+      const oldId = col.id;
+      if (needsIdRemap(col.id)) {
+        const nid = newId();
+        result.remappedIds.set(oldId, nid);
+        col.id = nid;
+        for (const b of col.books) b.columnId = nid;
+      }
+
+      const colRow = {
+        id: col.id,
+        user_id: uid,
+        label: col.label,
+        color: col.color,
+        created_at: col.createdAt,
+      };
+      const { error } = await supabase.from(T_COL).upsert(colRow, {
+        onConflict: "id",
+      });
+      if (error) {
+        if (isMissingTableError(error) && process.env.NODE_ENV === "development") {
+          console.warn(
+            `[miten] Table missing while pushing columns (${T_COL}). Apply migrations.`
+          );
+        } else {
+          console.warn("[miten] Phase 1 column push failed:", error);
+        }
+        return { ok: false };
+      }
+      result.pushedColumns += 1;
     }
 
-    const remote: DbEnvelope = {
-      payload: row.payload as DB,
-      updatedAt: row.updated_at,
-      version: DB_SCHEMA_VERSION,
-    };
+    for (const col of work) {
+      for (const book of col.books) {
+        const oldBid = book.id;
+        if (needsIdRemap(book.id)) {
+          const nid = newId();
+          result.remappedIds.set(oldBid, nid);
+          book.id = nid;
+        }
+        book.columnId = col.id;
 
-    const winner = pickNewer(local, remote);
-    this.envelope = winner;
-    writeLocal(this.envelope);
-    this.notify();
+        if (book.columnId == null || needsIdRemap(book.columnId)) {
+          console.warn("[miten] Skipping book with invalid column_id after remap");
+          continue;
+        }
 
-    if (local.updatedAt > remote.updatedAt) {
-      await supabase.from(REMOTE_TABLE).upsert(
-        {
-          user_id: user.id,
-          payload: local.payload,
-          updated_at: local.updatedAt,
-        },
-        { onConflict: "user_id" }
-      );
+        const row = bookToRemoteRow(book as Book, uid);
+        const { error } = await supabase.from(T_BOOK).upsert(row, {
+          onConflict: "id",
+        });
+        if (error) {
+          if (isMissingTableError(error) && process.env.NODE_ENV === "development") {
+            console.warn(
+              `[miten] Table missing while pushing books (${T_BOOK}). Apply migrations.`
+            );
+          } else {
+            console.warn("[miten] Phase 1 book push failed:", error);
+          }
+          return { ok: false };
+        }
+        result.pushedBooks += 1;
+      }
     }
+
+    const finalColumnIds = new Set(work.map((c) => c.id));
+    const finalBookIds = new Set<string>();
+    for (const c of work) for (const b of c.books) finalBookIds.add(b.id);
+
+    /**
+     * When local has no columns, skip remote deletes so a failed pull cannot
+     * be followed by an accidental full remote wipe on the next sync.
+     * (Clearing the cloud when the board is empty can be a separate explicit action.)
+     */
+    if (work.length > 0) {
+      const { data: remoteBooks, error: rbErr } = await supabase
+        .from(T_BOOK)
+        .select("id")
+        .eq("user_id", uid);
+      if (rbErr) {
+        console.warn("[miten] Phase 1 remote book listing failed:", rbErr);
+        return { ok: false };
+      }
+      const bookIdsToDelete =
+        remoteBooks
+          ?.map((r) => r.id as string)
+          .filter((id) => !finalBookIds.has(id)) ?? [];
+      if (bookIdsToDelete.length > 0) {
+        const { error: delB } = await supabase
+          .from(T_BOOK)
+          .delete()
+          .eq("user_id", uid)
+          .in("id", bookIdsToDelete);
+        if (delB) {
+          console.warn("[miten] Phase 1 orphan book delete failed:", delB);
+          return { ok: false };
+        }
+      }
+
+      const { data: remoteCols, error: rcErr } = await supabase
+        .from(T_COL)
+        .select("id")
+        .eq("user_id", uid);
+      if (rcErr) {
+        console.warn("[miten] Phase 1 remote column listing failed:", rcErr);
+        return { ok: false };
+      }
+      const colIdsToDelete =
+        remoteCols
+          ?.map((r) => r.id as string)
+          .filter((id) => !finalColumnIds.has(id)) ?? [];
+      if (colIdsToDelete.length > 0) {
+        const { error: delC } = await supabase
+          .from(T_COL)
+          .delete()
+          .eq("user_id", uid)
+          .in("id", colIdsToDelete);
+        if (delC) {
+          console.warn("[miten] Phase 1 orphan column delete failed:", delC);
+          return { ok: false };
+        }
+      }
+    }
+
+    return { ok: true };
+  }
+
+  private async phase3BuildPayload(
+    supabase: ReturnType<typeof createClient>,
+    uid: string,
+    result: SyncResult
+  ): Promise<{ ok: true; payload: DB } | { ok: false; error: unknown }> {
+    const { data: colRows, error: cErr } = await supabase
+      .from(T_COL)
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: true });
+
+    if (cErr) {
+      if (isMissingTableError(cErr)) return { ok: false, error: cErr };
+      return { ok: false, error: cErr };
+    }
+
+    const shells = (colRows ?? []).map((r) =>
+      remoteRowToColumnShell(r as Record<string, unknown>)
+    );
+    const columnIdSet = new Set(shells.map((c) => c.id));
+
+    if (shells.length === 0) {
+      result.pulledColumns = 0;
+      result.pulledBooks = 0;
+      return { ok: true, payload: { columns: [], archive: [] } };
+    }
+
+    const columnIds = [...columnIdSet];
+
+    const { data: bookRows, error: bErr } = await supabase
+      .from(T_BOOK)
+      .select("*")
+      .eq("user_id", uid)
+      .in("column_id", columnIds)
+      .or("popped_at.is.null,is_archived.eq.true");
+
+    if (bErr) {
+      if (isMissingTableError(bErr)) return { ok: false, error: bErr };
+      return { ok: false, error: bErr };
+    }
+
+    const byCol = new Map<string, Column>(
+      shells.map((s) => [s.id, { ...s, books: [] }])
+    );
+
+    for (const raw of bookRows ?? []) {
+      const r = raw as Record<string, unknown>;
+      const cid = r.column_id as string;
+      if (!columnIdSet.has(cid)) continue;
+      const book = remoteRowToBook(r);
+      byCol.get(cid)?.books.push(book);
+    }
+
+    const columns = shells.map((s) => byCol.get(s.id) ?? s);
+    result.pulledColumns = columns.length;
+    result.pulledBooks = columns.reduce((n, c) => n + c.books.length, 0);
+
+    return { ok: true, payload: { columns, archive: [] } };
   }
 }
 

@@ -7,7 +7,7 @@ import { NavItemProps } from "./types";
  * - onClick が渡された場合: ボタンとして動作（テーマ切替など）
  * - いずれもクリック後にドロワーを閉じる
  */
-export default function NavItem({ label, href, onClick, onClose }: NavItemProps) {
+export default function NavItem({ label, href, target = "_self", onClick, onClose }: NavItemProps) {
   const baseClass =
     "w-full flex items-center px-4 py-2.5 text-sm text-gray-200 " +
     "hover:bg-white/10 transition-colors text-left";
@@ -19,14 +19,14 @@ export default function NavItem({ label, href, onClick, onClose }: NavItemProps)
 
   if (href) {
     return (
-      <Link href={href} onClick={onClose} className={baseClass} role="menuitem">
+      <Link href={href} target={target} onClick={handleClick} className={baseClass} role="menuitem">
         {label}
       </Link>
     );
   }
 
   return (
-    <button onClick={handleClick} className={baseClass} role="menuitem">
+    <button type="button" onClick={handleClick} className={baseClass} role="menuitem">
       {label}
     </button>
   );

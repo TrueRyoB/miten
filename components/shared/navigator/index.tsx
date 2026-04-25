@@ -127,15 +127,24 @@ export default function Navigator({ onLocaleChange }: NavigatorProps) {
             : "opacity-0 scale-95 pointer-events-none",
         ].join(" ")}
       >
-        <NavItem label="User Guide" href="/guide" onClose={close} />
-        <NavItem label="FAQ" href="/faq" onClose={close} />
-        <NavItem label="Feedback" href="/feedback" onClose={close} />
+        <NavItem label="User Guide" href="https://github.com/TrueRyoB/miten/blob/main/doc/user-guide.md" target="_blank" onClose={close} />
+        <NavItem label="FAQ" href="https://github.com/TrueRyoB/miten/blob/main/doc/FAQ.md" target="_blank" onClose={close} />
+        <NavItem label="Feedback" href="https://github.com/TrueRyoB/miten/issues" target="_blank" onClose={close} />
 
         {isLoggedIn && (
           <>
             <div className="my-1 border-t border-white/10" />
 
             <NavItem
+              label="Summary"
+              onClose={close}
+              onClick={() => {
+                // TODO: open summary modal
+              }}
+            />
+
+            {/* To be implemented */}
+            {/* <NavItem
               label="Theme"
               onClose={close}
               onClick={() => {
@@ -147,7 +156,7 @@ export default function Navigator({ onLocaleChange }: NavigatorProps) {
               label="Public Settings"
               href="/settings/public"
               onClose={close}
-            />
+            /> */}
           </>
         )}
       </div>

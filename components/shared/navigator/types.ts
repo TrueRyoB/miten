@@ -10,6 +10,7 @@ export interface NavItemProps {
   href?: string;
   onClick?: () => void;
   onClose: () => void;
+  target?: string;
 }
 
 export interface UserBadgeProps {

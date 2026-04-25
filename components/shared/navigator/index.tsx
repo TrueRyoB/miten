@@ -7,12 +7,15 @@ import { useOnlineStatus } from "@/hooks/use-online";
 import type { Locale, NavigatorProps } from "./types";
 import UserBadge from "./UserBadge";
 import NavItem from "./NavItem";
+import { useModal } from "@/hooks/modal-context";
 
 function localeFromSearch(searchParams: URLSearchParams): Locale {
   return (searchParams.get("locale") ?? "en") as Locale;
 }
 
 export default function Navigator({ onLocaleChange }: NavigatorProps) {
+  const { open } = useModal()
+
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -139,7 +142,7 @@ export default function Navigator({ onLocaleChange }: NavigatorProps) {
               label="Summary"
               onClose={close}
               onClick={() => {
-                // TODO: open summary modal
+                open({ type: 'summary' });
               }}
             />
 

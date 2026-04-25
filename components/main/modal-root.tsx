@@ -8,6 +8,7 @@ import AddColumnModal from './add-column-modal'
 import PushModal from './push-modal'
 import PeekModal from './peek-modal'
 import PopModal from './pop-modal'
+import SummaryModal from './summary-modal'
 
 export default function ModalRoot() {
   const { modal } = useModal()
@@ -25,6 +26,7 @@ export default function ModalRoot() {
       {modal.type === 'pushCol' && <PushModal columnId={modal.columnId} />}
       {modal.type === 'peekCol' && <PeekModal columnId={modal.columnId} />}
       {modal.type === 'popCol' && <PopModal columnId={modal.columnId} />}
+      {modal.type === 'summary' && <SummaryModal />}
     </>,
     document.body
   )

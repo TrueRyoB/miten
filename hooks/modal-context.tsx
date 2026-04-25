@@ -9,6 +9,7 @@ export type ModalState =
   | { type: 'peekCol',  columnId: string} //peek book
   | { type: 'popCol', columnId: string} //remove book
   | { type: 'deleteCol', columnId: string } //delete column
+  | { type: 'summary' } //summary overview
 
 type ModalContextType = {
   modal: ModalState;

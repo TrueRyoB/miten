@@ -1,6 +1,7 @@
 import { createClient } from "@/utils/supabase/client";
 import type { Column } from "@/types/column";
 import type { Book } from "@/types/book";
+import type { Archive } from "@/types/archive";
 import type {
   DB,
   DbEnvelope,
@@ -93,7 +94,11 @@ function bookToRemoteRow(book: Book, userId: string): Record<string, unknown> {
     source_url: book.sourceUrl.trim() ? book.sourceUrl.trim() : null,
     is_important: book.isImportant,
     popped_at: book.poppedAt,
-    is_archived: book.isArchived ?? false,
+    /** Popped rows count as reading history unless explicitly opted out. */
+    is_archived:
+      book.poppedAt != null
+        ? book.isArchived !== false
+        : (book.isArchived ?? false),
     created_at: book.createdAt,
     genre: book.genre,
     review: book.review,
@@ -135,12 +140,56 @@ function remoteRowToColumnShell(r: Record<string, unknown>): Column {
   };
 }
 
+/**
+ * Books that are popped and archived are the "reading history" for the summary UI.
+ * Mirrors the same `Book` object references that live in `columns` so the payload
+ * stays consistent with the remote `miten_books` row set after pull.
+ */
+function buildArchiveFromColumns(columns: Column[]): Archive[] {
+  const books: Book[] = [];
+  for (const c of columns) {
+    for (const b of c.books) {
+      if (b.poppedAt && b.isArchived) books.push(b);
+    }
+  }
+  return books.length > 0 ? [{ books }] : [];
+}
+
 class MitenDbService implements MitenDatabase {
   private envelope: DbEnvelope;
   private listeners = new Set<MitenDbListener>();
 
   constructor() {
     this.envelope = readLocal() ?? emptyEnvelope();
+    this.migratePreV3PoppedToArchived();
+  }
+
+  /**
+   * v2: pop only set `poppedAt` — `isArchived` stayed false, so archive and pull
+   * queries hid reading history. Mark popped books as archived and rebuild archive.
+   */
+  private migratePreV3PoppedToArchived(): void {
+    if (this.envelope.version >= 3) return;
+    for (const c of this.envelope.payload.columns) {
+      for (const b of c.books) {
+        if (b.poppedAt) b.isArchived = true;
+      }
+    }
+    for (const a of this.envelope.payload.archive) {
+      for (const b of a.books) {
+        if (b.poppedAt) b.isArchived = true;
+      }
+    }
+    this.envelope = {
+      ...this.envelope,
+      version: DB_SCHEMA_VERSION,
+      updatedAt: isoNow(),
+      payload: {
+        columns: this.envelope.payload.columns,
+        archive: buildArchiveFromColumns(this.envelope.payload.columns),
+      },
+    };
+    writeLocal(this.envelope);
   }
 
   getEnvelope(): DbEnvelope {
@@ -280,7 +329,11 @@ class MitenDbService implements MitenDatabase {
     void this.sync();
   }
 
-  popColumn(columnId: string): void {
+  popColumn(
+    columnId: string,
+    options?: { isArchived?: boolean },
+  ): void {
+    const isArchived = options?.isArchived !== false;
     const { columns } = this.envelope.payload;
     const colIndex = columns.findIndex((c) => c.id === columnId);
     if (colIndex === -1) {
@@ -294,6 +347,7 @@ class MitenDbService implements MitenDatabase {
     for (let i = column.books.length - 1; i >= 0; i--) {
       if (!column.books[i].poppedAt) {
         column.books[i].poppedAt = poppedAt;
+        column.books[i].isArchived = isArchived;
         popped = true;
         break;
       }
@@ -307,7 +361,7 @@ class MitenDbService implements MitenDatabase {
       updatedAt: poppedAt,
       payload: {
         columns,
-        archive: this.envelope.payload.archive,
+        archive: buildArchiveFromColumns(columns),
       },
     };
     writeLocal(this.envelope);
@@ -482,6 +536,9 @@ class MitenDbService implements MitenDatabase {
     const finalColumnIds = new Set(work.map((c) => c.id));
     const finalBookIds = new Set<string>();
     for (const c of work) for (const b of c.books) finalBookIds.add(b.id);
+    for (const a of this.envelope.payload.archive) {
+      for (const b of a.books) finalBookIds.add(b.id);
+    }
 
     /**
      * When local has no columns, skip remote deletes so a failed pull cannot
@@ -598,7 +655,13 @@ class MitenDbService implements MitenDatabase {
     result.pulledColumns = columns.length;
     result.pulledBooks = columns.reduce((n, c) => n + c.books.length, 0);
 
-    return { ok: true, payload: { columns, archive: [] } };
+    return {
+      ok: true,
+      payload: {
+        columns,
+        archive: buildArchiveFromColumns(columns),
+      },
+    };
   }
 }
 

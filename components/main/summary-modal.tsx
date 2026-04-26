@@ -1,7 +1,7 @@
 'use client'
 
 import { useModal } from '@/hooks/modal-context'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useSyncExternalStore } from 'react'
 import type { Archive as ArchiveType } from '@/types/archive'
 import type { Book as BookType } from '@/types/book'
 import { mitenDb } from '@/lib/miten-db'
@@ -151,9 +151,22 @@ export default function SummaryModal() {
   const { close } = useModal()
   const [query, setQuery] = useState('')
 
+  const payload = useSyncExternalStore(
+    (onChange) => mitenDb.subscribe(() => onChange()),
+    () => mitenDb.getPayload(),
+    () => ({ columns: [], archive: [] })
+  )
+
   const archive = useMemo(() => {
-    return mitenDb.getPayload().archive.flatMap((a) => a.books)
-  }, [])
+    const fromPayload = payload.archive.flatMap((a) => a.books)
+    const fromColumns = payload.columns
+      .flatMap((c) => c.books)
+      .filter((b) => b.isArchived && b.poppedAt)
+    const byId = new Map<string, BookType>()
+    for (const b of fromPayload) byId.set(b.id, b)
+    for (const b of fromColumns) byId.set(b.id, b)
+    return [...byId.values()]
+  }, [payload])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

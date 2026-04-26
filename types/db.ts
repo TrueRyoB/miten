@@ -26,7 +26,7 @@ export type DbEnvelope = {
   version: number;
 };
 
-export const DB_SCHEMA_VERSION = 2;
+export const DB_SCHEMA_VERSION = 3;
 
 export const MITEN_DB_STORAGE_KEY = "miten-db-v1";
 
@@ -69,7 +69,11 @@ export interface MitenDatabase {
   addColumn(column: Column): void;
   updateColumnLabel(columnId: string, label: string): void;
   addBook(book: Book): void;
-  popColumn(columnId: string): void;
+  /** Popped books are archived in history and sync; pass `{ isArchived: false }` to opt out. */
+  popColumn(
+    columnId: string,
+    options?: { isArchived?: boolean },
+  ): void;
   peekColumn(columnId: string): Book | null;
   removeColumn(columnId: string): void;
   sync(): Promise<SyncResult>;

@@ -108,9 +108,10 @@ function bookToRemoteRow(book: Book, userId: string): Record<string, unknown> {
 }
 
 function remoteRowToBook(r: Record<string, unknown>): Book {
+  const colId = r.column_id;
   return {
     id: r.id as string,
-    columnId: r.column_id as string,
+    columnId: colId == null ? null : (colId as string),
     createdAt: r.created_at as string,
     title: r.title as string,
     color: r.color as string,
@@ -140,19 +141,40 @@ function remoteRowToColumnShell(r: Record<string, unknown>): Column {
   };
 }
 
-/**
- * Books that are popped and archived are the "reading history" for the summary UI.
- * Mirrors the same `Book` object references that live in `columns` so the payload
- * stays consistent with the remote `miten_books` row set after pull.
- */
-function buildArchiveFromColumns(columns: Column[]): Archive[] {
-  const books: Book[] = [];
-  for (const c of columns) {
-    for (const b of c.books) {
-      if (b.poppedAt && b.isArchived) books.push(b);
+function isHistoryBook(b: Book): boolean {
+  return Boolean(b.poppedAt && b.isArchived);
+}
+
+/** History rows detached after column delete (`columnId` null) kept in the archive slice. */
+function orphanHistoryBooksFromArchive(archive: Archive[]): Book[] {
+  const out: Book[] = [];
+  for (const a of archive) {
+    for (const b of a.books ?? []) {
+      if (b.columnId == null && isHistoryBook(b)) out.push(b);
     }
   }
-  return books.length > 0 ? [{ books }] : [];
+  return out;
+}
+
+/**
+ * Denormalized reading history for the summary UI: `columns` (popped+archived) plus
+ * detached orphans, deduped by id.
+ */
+function buildArchivePayload(
+  columns: Column[],
+  extraOrphanBooks: readonly Book[]
+): Archive[] {
+  const byId = new Map<string, Book>();
+  for (const c of columns) {
+    for (const b of c.books) {
+      if (isHistoryBook(b)) byId.set(b.id, b);
+    }
+  }
+  for (const b of extraOrphanBooks) {
+    if (isHistoryBook(b)) byId.set(b.id, b);
+  }
+  const list = [...byId.values()];
+  return list.length > 0 ? [{ books: list }] : [];
 }
 
 class MitenDbService implements MitenDatabase {
@@ -186,7 +208,7 @@ class MitenDbService implements MitenDatabase {
       updatedAt: isoNow(),
       payload: {
         columns: this.envelope.payload.columns,
-        archive: buildArchiveFromColumns(this.envelope.payload.columns),
+        archive: buildArchivePayload(this.envelope.payload.columns, []),
       },
     };
     writeLocal(this.envelope);
@@ -361,7 +383,10 @@ class MitenDbService implements MitenDatabase {
       updatedAt: poppedAt,
       payload: {
         columns,
-        archive: buildArchiveFromColumns(columns),
+        archive: buildArchivePayload(
+          columns,
+          orphanHistoryBooksFromArchive(this.envelope.payload.archive)
+        ),
       },
     };
     writeLocal(this.envelope);
@@ -369,20 +394,36 @@ class MitenDbService implements MitenDatabase {
     void this.sync();
   }
 
-  removeColumn(columnId: string): void {
+  deleteColumn(columnId: string): void {
     const { columns, archive } = this.envelope.payload;
     const colIndex = columns.findIndex((c) => c.id === columnId);
     if (colIndex === -1) {
-      console.warn(`removeColumn: no column with id "${columnId}"`);
+      console.warn(`deleteColumn: no column with id "${columnId}"`);
       return;
     }
-
+    const column = columns[colIndex];
+    const label = column.label.trim() || "—";
+    const nextColumns = columns.filter((_, i) => i !== colIndex);
+    const detached: Book[] = column.books
+      .filter((b) => isHistoryBook(b))
+      .map((b) => {
+        const prev = b.genre?.trim();
+        return {
+          ...b,
+          columnId: null,
+          genre: prev ? `${label} — ${prev}` : label,
+        };
+      });
+    const priorOrphans = orphanHistoryBooksFromArchive(archive);
+    const byId = new Map<string, Book>();
+    for (const b of priorOrphans) byId.set(b.id, b);
+    for (const b of detached) byId.set(b.id, b);
     this.envelope = {
       version: DB_SCHEMA_VERSION,
       updatedAt: isoNow(),
       payload: {
-        columns: columns.filter((_, i) => i !== colIndex),
-        archive,
+        columns: nextColumns,
+        archive: buildArchivePayload(nextColumns, [...byId.values()]),
       },
     };
     writeLocal(this.envelope);
@@ -533,6 +574,34 @@ class MitenDbService implements MitenDatabase {
       }
     }
 
+    for (const a of this.envelope.payload.archive) {
+      for (const book of a.books) {
+        if (book.columnId != null) continue;
+        let b: Book = book;
+        const oldBid = b.id;
+        if (needsIdRemap(b.id)) {
+          const nid = newId();
+          result.remappedIds.set(oldBid, nid);
+          b = { ...b, id: nid };
+        }
+        const row = bookToRemoteRow(b, uid);
+        const { error: oerr } = await supabase.from(T_BOOK).upsert(row, {
+          onConflict: "id",
+        });
+        if (oerr) {
+          if (isMissingTableError(oerr) && process.env.NODE_ENV === "development") {
+            console.warn(
+              `[miten] Table missing while pushing orphan books (${T_BOOK}). Apply migrations.`
+            );
+          } else {
+            console.warn("[miten] Phase 1 orphan book push failed:", oerr);
+          }
+          return { ok: false };
+        }
+        result.pushedBooks += 1;
+      }
+    }
+
     const finalColumnIds = new Set(work.map((c) => c.id));
     const finalBookIds = new Set<string>();
     for (const c of work) for (const b of c.books) finalBookIds.add(b.id);
@@ -541,57 +610,56 @@ class MitenDbService implements MitenDatabase {
     }
 
     /**
-     * When local has no columns, skip remote deletes so a failed pull cannot
-     * be followed by an accidental full remote wipe on the next sync.
-     * (Clearing the cloud when the board is empty can be a separate explicit action.)
+     * Drop remote rows that no longer exist locally. This must also run when
+     * `work.length === 0` (e.g. user removed the last column); otherwise the
+     * following pull would recreate that column from Supabase. Archive-only
+     * books stay via `finalBookIds`.
      */
-    if (work.length > 0) {
-      const { data: remoteBooks, error: rbErr } = await supabase
+    const { data: remoteBooks, error: rbErr } = await supabase
+      .from(T_BOOK)
+      .select("id")
+      .eq("user_id", uid);
+    if (rbErr) {
+      console.warn("[miten] Phase 1 remote book listing failed:", rbErr);
+      return { ok: false };
+    }
+    const bookIdsToDelete =
+      remoteBooks
+        ?.map((r) => r.id as string)
+        .filter((id) => !finalBookIds.has(id)) ?? [];
+    if (bookIdsToDelete.length > 0) {
+      const { error: delB } = await supabase
         .from(T_BOOK)
-        .select("id")
-        .eq("user_id", uid);
-      if (rbErr) {
-        console.warn("[miten] Phase 1 remote book listing failed:", rbErr);
+        .delete()
+        .eq("user_id", uid)
+        .in("id", bookIdsToDelete);
+      if (delB) {
+        console.warn("[miten] Phase 1 orphan book delete failed:", delB);
         return { ok: false };
       }
-      const bookIdsToDelete =
-        remoteBooks
-          ?.map((r) => r.id as string)
-          .filter((id) => !finalBookIds.has(id)) ?? [];
-      if (bookIdsToDelete.length > 0) {
-        const { error: delB } = await supabase
-          .from(T_BOOK)
-          .delete()
-          .eq("user_id", uid)
-          .in("id", bookIdsToDelete);
-        if (delB) {
-          console.warn("[miten] Phase 1 orphan book delete failed:", delB);
-          return { ok: false };
-        }
-      }
+    }
 
-      const { data: remoteCols, error: rcErr } = await supabase
+    const { data: remoteCols, error: rcErr } = await supabase
+      .from(T_COL)
+      .select("id")
+      .eq("user_id", uid);
+    if (rcErr) {
+      console.warn("[miten] Phase 1 remote column listing failed:", rcErr);
+      return { ok: false };
+    }
+    const colIdsToDelete =
+      remoteCols
+        ?.map((r) => r.id as string)
+        .filter((id) => !finalColumnIds.has(id)) ?? [];
+    if (colIdsToDelete.length > 0) {
+      const { error: delC } = await supabase
         .from(T_COL)
-        .select("id")
-        .eq("user_id", uid);
-      if (rcErr) {
-        console.warn("[miten] Phase 1 remote column listing failed:", rcErr);
+        .delete()
+        .eq("user_id", uid)
+        .in("id", colIdsToDelete);
+      if (delC) {
+        console.warn("[miten] Phase 1 orphan column delete failed:", delC);
         return { ok: false };
-      }
-      const colIdsToDelete =
-        remoteCols
-          ?.map((r) => r.id as string)
-          .filter((id) => !finalColumnIds.has(id)) ?? [];
-      if (colIdsToDelete.length > 0) {
-        const { error: delC } = await supabase
-          .from(T_COL)
-          .delete()
-          .eq("user_id", uid)
-          .in("id", colIdsToDelete);
-        if (delC) {
-          console.warn("[miten] Phase 1 orphan column delete failed:", delC);
-          return { ok: false };
-        }
       }
     }
 
@@ -618,48 +686,64 @@ class MitenDbService implements MitenDatabase {
       remoteRowToColumnShell(r as Record<string, unknown>)
     );
     const columnIdSet = new Set(shells.map((c) => c.id));
+    const columnIds = [...columnIdSet];
+    const historyOr = "popped_at.is.null,is_archived.eq.true";
 
-    if (shells.length === 0) {
-      result.pulledColumns = 0;
-      result.pulledBooks = 0;
-      return { ok: true, payload: { columns: [], archive: [] } };
+    const inColumnRows: Record<string, unknown>[] = [];
+    if (columnIds.length > 0) {
+      const { data, error: bErr } = await supabase
+        .from(T_BOOK)
+        .select("*")
+        .eq("user_id", uid)
+        .in("column_id", columnIds)
+        .or(historyOr);
+      if (bErr) {
+        if (isMissingTableError(bErr)) return { ok: false, error: bErr };
+        return { ok: false, error: bErr };
+      }
+      inColumnRows.push(...(data ?? []));
     }
 
-    const columnIds = [...columnIdSet];
-
-    const { data: bookRows, error: bErr } = await supabase
+    const { data: nullColRows, error: oErr } = await supabase
       .from(T_BOOK)
       .select("*")
       .eq("user_id", uid)
-      .in("column_id", columnIds)
-      .or("popped_at.is.null,is_archived.eq.true");
-
-    if (bErr) {
-      if (isMissingTableError(bErr)) return { ok: false, error: bErr };
-      return { ok: false, error: bErr };
+      .is("column_id", null)
+      .or(historyOr);
+    if (oErr) {
+      if (isMissingTableError(oErr)) return { ok: false, error: oErr };
+      return { ok: false, error: oErr };
     }
 
     const byCol = new Map<string, Column>(
       shells.map((s) => [s.id, { ...s, books: [] }])
     );
+    const orphanBooks: Book[] = [];
 
-    for (const raw of bookRows ?? []) {
+    for (const raw of inColumnRows) {
       const r = raw as Record<string, unknown>;
-      const cid = r.column_id as string;
-      if (!columnIdSet.has(cid)) continue;
+      const cid = r.column_id;
+      if (cid == null) continue;
+      if (!columnIdSet.has(cid as string)) continue;
       const book = remoteRowToBook(r);
-      byCol.get(cid)?.books.push(book);
+      byCol.get(cid as string)?.books.push(book);
+    }
+    for (const raw of nullColRows ?? []) {
+      const r = raw as Record<string, unknown>;
+      if (r.column_id != null) continue;
+      orphanBooks.push(remoteRowToBook(r));
     }
 
     const columns = shells.map((s) => byCol.get(s.id) ?? s);
     result.pulledColumns = columns.length;
-    result.pulledBooks = columns.reduce((n, c) => n + c.books.length, 0);
+    result.pulledBooks =
+      columns.reduce((n, c) => n + c.books.length, 0) + orphanBooks.length;
 
     return {
       ok: true,
       payload: {
         columns,
-        archive: buildArchiveFromColumns(columns),
+        archive: buildArchivePayload(columns, orphanBooks),
       },
     };
   }

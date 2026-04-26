@@ -75,6 +75,6 @@ export interface MitenDatabase {
     options?: { isArchived?: boolean },
   ): void;
   peekColumn(columnId: string): Book | null;
-  removeColumn(columnId: string): void;
+  deleteColumn(columnId: string): void;
   sync(): Promise<SyncResult>;
 }

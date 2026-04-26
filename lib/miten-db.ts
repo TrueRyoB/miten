@@ -18,6 +18,8 @@ import {
 
 const T_COL = "miten_columns";
 const T_BOOK = "miten_books";
+/** INNER join of columns and books; see supabase/migrations/20260425200000_*.sql */
+const T_COLUMN_BOOKS_V = "miten_column_books_v";
 
 /** Wall-clock ISO timestamps for persistence (hooks cannot run in this module). */
 function isoNow(): string {
@@ -104,6 +106,7 @@ function bookToRemoteRow(book: Book, userId: string): Record<string, unknown> {
     review: book.review,
     rating: book.rating,
     next_url: book.nextUrl,
+    sort_order: book.sortOrder,
   };
 }
 
@@ -127,6 +130,11 @@ function remoteRowToBook(r: Record<string, unknown>): Book {
         ? Number(r.rating)
         : null,
     nextUrl: (r.next_url as string | null) ?? null,
+    sortOrder: Number(
+      (r as { sort_order?: unknown }).sort_order != null
+        ? (r as { sort_order: number }).sort_order
+        : 0
+    ),
   };
 }
 
@@ -139,6 +147,20 @@ function remoteRowToColumnShell(r: Record<string, unknown>): Column {
     books: [],
     poppedAt: null,
   };
+}
+
+/** Same history filter as PostgREST `.or` on `miten_books` during pull. */
+function historyRowPulled(r: Record<string, unknown>): boolean {
+  const p = r.popped_at;
+  const a = r.is_archived;
+  return p == null || a === true;
+}
+
+/** Top of stack: unpopped book with max `sortOrder`. */
+function topUnpoppedBySort(column: Column): Book | null {
+  const u = column.books.filter((b) => !b.poppedAt);
+  if (u.length === 0) return null;
+  return u.reduce((best, b) => (b.sortOrder > best.sortOrder ? b : best));
 }
 
 function isHistoryBook(b: Book): boolean {
@@ -184,6 +206,7 @@ class MitenDbService implements MitenDatabase {
   constructor() {
     this.envelope = readLocal() ?? emptyEnvelope();
     this.migratePreV3PoppedToArchived();
+    this.migrateV4SortOrder();
   }
 
   /**
@@ -204,12 +227,39 @@ class MitenDbService implements MitenDatabase {
     }
     this.envelope = {
       ...this.envelope,
-      version: DB_SCHEMA_VERSION,
+      version: 3,
       updatedAt: isoNow(),
       payload: {
         columns: this.envelope.payload.columns,
         archive: buildArchivePayload(this.envelope.payload.columns, []),
       },
+    };
+    writeLocal(this.envelope);
+  }
+
+  /**
+   * v4: add `sortOrder` for stack/shuffle; default from array order when missing.
+   */
+  private migrateV4SortOrder(): void {
+    if (this.envelope.version >= 4) return;
+    for (const c of this.envelope.payload.columns) {
+      c.books.forEach((b, i) => {
+        if (typeof b.sortOrder !== "number" || Number.isNaN(b.sortOrder)) {
+          b.sortOrder = i;
+        }
+      });
+    }
+    for (const a of this.envelope.payload.archive) {
+      for (const b of a.books) {
+        if (typeof b.sortOrder !== "number" || Number.isNaN(b.sortOrder)) {
+          b.sortOrder = 0;
+        }
+      }
+    }
+    this.envelope = {
+      ...this.envelope,
+      version: DB_SCHEMA_VERSION,
+      updatedAt: isoNow(),
     };
     writeLocal(this.envelope);
   }
@@ -312,16 +362,8 @@ class MitenDbService implements MitenDatabase {
       return null;
     }
     const column = columns[colIndex];
-    if (column.books.length === 0) {
-      console.warn(`peekColumn: no books in column "${columnId}"`);
-      return null;
-    }
-
-    for (let i = column.books.length - 1; i >= 0; i--) {
-      if (!column.books[i].poppedAt) {
-        return column.books[i];
-      }
-    }
+    const top = topUnpoppedBySort(column);
+    if (top) return top;
     console.warn(`peekColumn: no unpopped books in column "${columnId}"`);
     return null;
   }
@@ -333,9 +375,16 @@ class MitenDbService implements MitenDatabase {
       console.warn(`addBook: no column with id "${book.columnId}"`);
       return;
     }
+    const col = columns[colIndex];
+    const ups = col.books.filter((b) => !b.poppedAt);
+    const nextOrder =
+      ups.length === 0
+        ? 0
+        : Math.max(...ups.map((b) => b.sortOrder), 0) + 1;
+    const toAdd: Book = { ...book, sortOrder: nextOrder };
 
     const nextColumns = columns.map((col, i) =>
-      i === colIndex ? { ...col, books: [...col.books, book] } : col
+      i === colIndex ? { ...col, books: [...col.books, toAdd] } : col
     );
 
     this.envelope = {
@@ -364,19 +413,16 @@ class MitenDbService implements MitenDatabase {
     }
     const column = columns[colIndex];
 
-    const poppedAt = isoNow();
-    let popped = false;
-    for (let i = column.books.length - 1; i >= 0; i--) {
-      if (!column.books[i].poppedAt) {
-        column.books[i].poppedAt = poppedAt;
-        column.books[i].isArchived = isArchived;
-        popped = true;
-        break;
-      }
-    }
-    if (!popped) {
+    const top = topUnpoppedBySort(column);
+    if (!top) {
       console.warn(`popColumn: no unpopped books in column "${columnId}"`);
       return;
+    }
+    const poppedAt = isoNow();
+    const target = column.books.find((b) => b.id === top.id);
+    if (target) {
+      target.poppedAt = poppedAt;
+      target.isArchived = isArchived;
     }
     this.envelope = {
       version: DB_SCHEMA_VERSION,
@@ -424,6 +470,45 @@ class MitenDbService implements MitenDatabase {
       payload: {
         columns: nextColumns,
         archive: buildArchivePayload(nextColumns, [...byId.values()]),
+      },
+    };
+    writeLocal(this.envelope);
+    this.notify();
+    void this.sync();
+  }
+
+  shuffleColumn(columnId: string): void {
+    const { columns, archive: ach } = this.envelope.payload;
+    const colIndex = columns.findIndex((c) => c.id === columnId);
+    if (colIndex === -1) {
+      console.warn(`shuffleColumn: no column with id "${columnId}"`);
+      return;
+    }
+    const column = columns[colIndex];
+    const unpopped = column.books.filter((b) => !b.poppedAt);
+    if (unpopped.length < 2) return;
+
+    const shuffled = [...unpopped];
+    for (let k = shuffled.length - 1; k > 0; k--) {
+      const j = (Math.random() * (k + 1)) | 0;
+      [shuffled[k], shuffled[j]] = [shuffled[j], shuffled[k]];
+    }
+    const byId = new Map(shuffled.map((b, i) => [b.id, i] as [string, number]));
+    const nextBooks = column.books.map((b) =>
+      b.poppedAt ? b : { ...b, sortOrder: byId.get(b.id) ?? b.sortOrder }
+    );
+    const nextColumns = columns.map((c, i) =>
+      i === colIndex ? { ...c, books: nextBooks } : c
+    );
+    this.envelope = {
+      version: DB_SCHEMA_VERSION,
+      updatedAt: isoNow(),
+      payload: {
+        columns: nextColumns,
+        archive: buildArchivePayload(
+          nextColumns,
+          orphanHistoryBooksFromArchive(ach)
+        ),
       },
     };
     writeLocal(this.envelope);
@@ -691,17 +776,33 @@ class MitenDbService implements MitenDatabase {
 
     const inColumnRows: Record<string, unknown>[] = [];
     if (columnIds.length > 0) {
-      const { data, error: bErr } = await supabase
-        .from(T_BOOK)
+      const { data: vData, error: vErr } = await supabase
+        .from(T_COLUMN_BOOKS_V)
         .select("*")
-        .eq("user_id", uid)
-        .in("column_id", columnIds)
-        .or(historyOr);
-      if (bErr) {
-        if (isMissingTableError(bErr)) return { ok: false, error: bErr };
-        return { ok: false, error: bErr };
+        .eq("user_id", uid);
+      if (vErr && !isMissingTableError(vErr)) {
+        return { ok: false, error: vErr };
       }
-      inColumnRows.push(...(data ?? []));
+      if (!vErr && vData != null) {
+        inColumnRows.push(
+          ...(vData as Record<string, unknown>[]).filter((r) => {
+            const id = (r as { col_id?: string }).col_id;
+            return id != null && columnIdSet.has(id);
+          })
+        );
+      } else {
+        const { data, error: bErr } = await supabase
+          .from(T_BOOK)
+          .select("*")
+          .eq("user_id", uid)
+          .in("column_id", columnIds)
+          .or(historyOr);
+        if (bErr) {
+          if (isMissingTableError(bErr)) return { ok: false, error: bErr };
+          return { ok: false, error: bErr };
+        }
+        inColumnRows.push(...(data ?? []));
+      }
     }
 
     const { data: nullColRows, error: oErr } = await supabase
@@ -721,12 +822,22 @@ class MitenDbService implements MitenDatabase {
     const orphanBooks: Book[] = [];
 
     for (const raw of inColumnRows) {
-      const r = raw as Record<string, unknown>;
-      const cid = r.column_id;
-      if (cid == null) continue;
-      if (!columnIdSet.has(cid as string)) continue;
-      const book = remoteRowToBook(r);
-      byCol.get(cid as string)?.books.push(book);
+      const r = raw as Record<string, unknown> & { col_id?: string };
+      if (r.col_id != null) {
+        if (!historyRowPulled(r)) continue;
+        const cid = r.col_id as string;
+        if (!columnIdSet.has(cid)) continue;
+        byCol.get(cid)?.books.push(remoteRowToBook(r));
+      } else {
+        const cid2 = r.column_id as string | null | undefined;
+        if (cid2 == null) continue;
+        if (!columnIdSet.has(cid2)) continue;
+        if (!historyRowPulled(r)) continue;
+        byCol.get(cid2)?.books.push(remoteRowToBook(r));
+      }
+    }
+    for (const c of byCol.values()) {
+      c.books.sort((a, b) => a.sortOrder - b.sortOrder);
     }
     for (const raw of nullColRows ?? []) {
       const r = raw as Record<string, unknown>;

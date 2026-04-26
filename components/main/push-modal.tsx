@@ -58,6 +58,7 @@ export default function PushModal( { columnId }: { columnId: string } ) {
       review: null,
       rating: null,
       nextUrl: null,
+      sortOrder: 0,
     }
 
     mitenDb.addBook(book)

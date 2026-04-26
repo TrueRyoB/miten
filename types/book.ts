@@ -17,6 +17,9 @@ export type Book = {
     review: string | null;
     rating: number | null;
     nextUrl: string | null;
+
+    /** Unpopped stack order within a column: higher = top of stack (peeking/popping). */
+    sortOrder: number;
 }
 
 export default Book;

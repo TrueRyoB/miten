@@ -66,7 +66,9 @@ export default function Column({ column }: {column: ColumnType}) {
       .reduce((acc, book) => acc + book.estimatedMinutes, 0)
   }
 
-  const unpopped = column.books.filter((b) => !b.poppedAt)
+  const unpopped = column.books
+    .filter((b) => !b.poppedAt)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
 
   return (
     <>
@@ -274,6 +276,15 @@ export default function Column({ column }: {column: ColumnType}) {
             </button>
             <button type="button" className="col-btn" onClick={() => openPopModal(column.id)} disabled={isEmpty}>
               Pop
+            </button>
+            <button
+              type="button"
+              className="col-btn"
+              onClick={() => mitenDb.shuffleColumn(column.id)}
+              disabled={unpopped.length < 2}
+              title="Randomize order"
+            >
+              Shuffle
             </button>
           </div>
         </div>

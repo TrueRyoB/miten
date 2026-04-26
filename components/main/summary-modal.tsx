@@ -1,324 +1,521 @@
 'use client'
 
-import { useModal } from '@/hooks/modal-context'
-import { useState, useMemo, useSyncExternalStore } from 'react'
-import type { Archive as ArchiveType } from '@/types/archive'
-import type { Book as BookType } from '@/types/book'
-import { mitenDb } from '@/lib/miten-db'
+import { useState, useMemo, useSyncExternalStore } from "react";
+import { useModal } from "@/hooks/modal-context";
+import { mitenDb } from "@/lib/miten-db";
+import type { Book } from "@/types/book";
 
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <span className="star-rating" aria-label={`${rating} out of 5`}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <span key={n} className={n <= rating ? 'star filled' : 'star'}>★</span>
-      ))}
-    </span>
-  )
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function relativeDate(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins  = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days  = Math.floor(diff / 86_400_000);
+  const weeks = Math.floor(days / 7);
+  const months = Math.floor(days / 30);
+  const years  = Math.floor(days / 365);
+
+  if (mins  <  1) return "just now";
+  if (mins  < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days  <  7) return `${days}d ago`;
+  if (weeks <  5) return `${weeks}w ago`;
+  if (months < 12) return `${months}mo ago`;
+  return `${years}y ago`;
 }
 
-function BookCard({ book }: { book: BookType }) {
-  const date = new Date(book.poppedAt ?? book.createdAt)
-  const timeStr = date.toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
+function formatAggregate(totalMinutes: number): string {
+  const d  = Math.floor(totalMinutes / 1440);
+  const h  = Math.floor((totalMinutes % 1440) / 60);
+  const m  = totalMinutes % 60;
+  const parts: string[] = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  parts.push(`${m}m`);
+  return parts.join(" ");
+}
 
-  const hrs = Math.floor(book.estimatedMinutes / 60)
-  const mins = book.estimatedMinutes % 60
-  const readTime = hrs > 0 ? `${hrs}h ${mins > 0 ? `${mins}m` : ''}` : `${mins}m`
+// ─── sub-components ──────────────────────────────────────────────────────────
 
+function SpineOrb({ color }: { color: string }) {
   return (
-    <>
-      <style>{`
-        .book-card {
-          display: flex;
-          gap: 14px;
-          padding: 18px 0;
-          border-bottom: 1px solid var(--modal-border);
-          animation: cardIn 0.25s ease both;
-        }
-        .book-card:last-child { border-bottom: none; }
-        @keyframes cardIn {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .book-dot {
-          flex-shrink: 0;
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          margin-top: 6px;
-        }
-        .book-body { flex: 1; min-width: 0; }
-        .book-header {
-          display: flex;
-          align-items: baseline;
-          gap: 8px;
-          flex-wrap: wrap;
-          margin-bottom: 6px;
-        }
-        .book-title {
-          font-size: 14px;
-          font-weight: 650;
-          color: var(--modal-ink);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          max-width: 260px;
-        }
-        .book-meta {
-          font-size: 11.5px;
-          color: var(--modal-muted);
-          white-space: nowrap;
-        }
-        .book-meta .sep { margin: 0 4px; opacity: 0.4; }
-        .book-review {
-          font-size: 13px;
-          line-height: 1.65;
-          color: var(--modal-ink);
-          opacity: 0.85;
-          margin-bottom: 8px;
-          word-break: break-word;
-        }
-        .book-footer {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-        .star { color: var(--modal-muted); font-size: 12px; }
-        .star.filled { color: #f4b942; }
-        .badge {
-          font-size: 10.5px;
-          padding: 2px 7px;
-          border-radius: 99px;
-          border: 1px solid var(--modal-border);
-          color: var(--modal-muted);
-          background: transparent;
-          line-height: 1.6;
-        }
-        .badge.important {
-          border-color: #f4b94260;
-          color: #c48f1c;
-          background: #f4b94214;
-        }
-        .book-link {
-          font-size: 11.5px;
-          color: var(--modal-muted);
-          text-decoration: none;
-          opacity: 0.6;
-          transition: opacity 0.15s;
-          margin-left: auto;
-        }
-        .book-link:hover { opacity: 1; }
-      `}</style>
-      <div className="book-card">
-        <div className="book-dot" style={{ background: book.color }} />
-        <div className="book-body">
-          <div className="book-header">
-            <span className="book-title" title={book.title}>{book.title}</span>
-            <span className="book-meta">
-              {timeStr}
-              {book.genre && <><span className="sep">·</span>{book.genre}</>}
-              <span className="sep">·</span>{readTime}
-            </span>
-          </div>
+    <span
+      aria-hidden
+      style={{
+        display: "inline-block",
+        width: 10,
+        height: 10,
+        borderRadius: "50%",
+        background: color || "#8b7355",
+        boxShadow: `0 0 6px ${color || "#8b7355"}88`,
+        flexShrink: 0,
+        marginTop: 2,
+      }}
+    />
+  );
+}
 
-          {book.review && (
-            <div className="book-review">{book.review}</div>
+function BookEntry({ book }: { book: Book }) {
+  const archived = book.poppedAt ?? book.createdAt;
+  return (
+    <article
+      style={{
+        display: "flex",
+        gap: 12,
+        padding: "14px 0",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        alignItems: "flex-start",
+        transition: "background 0.15s",
+      }}
+      onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.03)")}
+      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+    >
+      {/* spine color orb */}
+      <div style={{ paddingTop: 4 }}>
+        <SpineOrb color={book.color} />
+      </div>
+
+      {/* main content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <span
+            style={{
+              fontFamily: "'IM Fell English', Georgia, serif",
+              fontSize: 15,
+              color: "#e8dcc8",
+              fontWeight: 400,
+              lineHeight: 1.3,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {book.title}
+          </span>
+          <span
+            style={{
+              fontFamily: "'Courier New', monospace",
+              fontSize: 11,
+              color: "rgba(200,180,140,0.5)",
+              flexShrink: 0,
+            }}
+          >
+            {relativeDate(archived)}
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            marginTop: 5,
+            alignItems: "center",
+          }}
+        >
+          {/* minutes badge */}
+          <span
+            style={{
+              fontFamily: "'Courier New', monospace",
+              fontSize: 11,
+              color: "rgba(180,220,200,0.75)",
+              background: "rgba(100,180,150,0.12)",
+              border: "1px solid rgba(100,180,150,0.2)",
+              borderRadius: 3,
+              padding: "1px 6px",
+            }}
+          >
+            {book.estimatedMinutes} min
+          </span>
+
+          {/* genre pill if present */}
+          {book.genre && (
+            <span
+              style={{
+                fontFamily: "'Courier New', monospace",
+                fontSize: 10,
+                color: "rgba(200,180,140,0.45)",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
+            >
+              {book.genre}
+            </span>
           )}
 
-          <div className="book-footer">
-            {book.rating != null && <StarRating rating={book.rating} />}
-            {book.isImportant && <span className="badge important">⚑ important</span>}
-            {book.sourceUrl && (
-              <a
-                className="book-link"
-                href={book.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                source ↗
-              </a>
-            )}
-          </div>
+          {/* star rating */}
+          {book.rating != null && (
+            <span style={{ fontSize: 10, color: "#c8a84b", letterSpacing: 1 }}>
+              {"★".repeat(book.rating)}{"☆".repeat(5 - book.rating)}
+            </span>
+          )}
         </div>
       </div>
-    </>
-  )
+    </article>
+  );
 }
 
-export default function SummaryModal() {
-  const { close } = useModal()
-  const [query, setQuery] = useState('')
+// ─── main modal ──────────────────────────────────────────────────────────────
 
-  const payload = useSyncExternalStore(
+export function SummaryModal() {
+  const { modal, close } = useModal();
+  const [query, setQuery] = useState("");
+
+  const db = useSyncExternalStore(
     (onChange) => mitenDb.subscribe(() => onChange()),
     () => mitenDb.getPayload(),
     () => ({ columns: [], archive: [] })
-  )
+  );
 
-  const archive = useMemo(() => {
-    const fromPayload = payload.archive.flatMap((a) => a.books)
-    const fromColumns = payload.columns
-      .flatMap((c) => c.books)
-      .filter((b) => b.isArchived && b.poppedAt)
-    const byId = new Map<string, BookType>()
-    for (const b of fromPayload) byId.set(b.id, b)
-    for (const b of fromColumns) byId.set(b.id, b)
+  // Reading history lives in `archive` and in `columns` (same books after sync);
+  // merge and dedupe by id so the list stays correct when one slice is empty.
+  const allBooks: Book[] = useMemo(() => {
+    const archive = db.archive ?? [];
+    const columns = db.columns ?? [];
+    const fromArchive = archive.flatMap((a) => a.books ?? []);
+    const fromColumns = columns
+      .flatMap((c) => c.books ?? [])
+      .filter((b) => b.poppedAt && b.isArchived);
+    const byId = new Map<string, Book>();
+    for (const b of fromArchive) byId.set(b.id, b);
+    for (const b of fromColumns) byId.set(b.id, b);
     return [...byId.values()]
-  }, [payload])
+      .filter((b) => b.poppedAt && b.isArchived)
+      .sort((a, b) => {
+        const ta = new Date(a.poppedAt ?? a.createdAt).getTime();
+        const tb = new Date(b.poppedAt ?? b.createdAt).getTime();
+        return tb - ta;
+      });
+  }, [db]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const readBooks = archive.filter((b) => b.isArchived && b.poppedAt)
+    if (!query.trim()) return allBooks;
+    const q = query.toLowerCase();
+    return allBooks.filter(b => b.title.toLowerCase().includes(q));
+  }, [allBooks, query]);
 
-    const sorted = [...readBooks].sort(
-      (a, b) => new Date(a.poppedAt!).getTime() - new Date(b.poppedAt!).getTime(),
-    )
+  const totalMinutes = useMemo(
+    () => filtered.reduce((acc, b) => acc + b.estimatedMinutes, 0),
+    [filtered]
+  );
 
-    if (!q) return sorted
-    return sorted.filter(
-      (b) =>
-        b.title.toLowerCase().includes(q) ||
-        (b.review ?? '').toLowerCase().includes(q) ||
-        (b.genre ?? '').toLowerCase().includes(q),
-    )
-  }, [archive, query])
+  if (modal.type !== "summary") return null;
+
+  // click outside to close
+  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) close();
+  };
 
   return (
     <>
+      {/* inject Google Font */}
       <style>{`
-        .archive-overlay {
-          position: fixed; inset: 0;
-          background: var(--modal-scrim, rgba(0,0,0,.45));
-          display: flex; align-items: center; justify-content: center;
-          z-index: 1000;
-          padding: 20px;
-        }
-        .archive-modal {
-          position: relative;
-          background: var(--modal-bg, #fff);
-          border: 1px solid var(--modal-border, #e4e4e7);
-          border-radius: 14px;
-          width: 100%;
-          max-width: 560px;
-          max-height: 80vh;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 20px 60px rgba(0,0,0,.18);
-          overflow: hidden;
-        }
-        .archive-header {
-          padding: 20px 20px 0;
-          flex-shrink: 0;
-        }
-        .archive-title-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 14px;
-        }
-        .archive-title {
-          font-size: 15px;
-          font-weight: 650;
-          color: var(--modal-ink);
-          letter-spacing: -0.01em;
-        }
-        .archive-count {
-          font-size: 12px;
-          color: var(--modal-muted);
-          margin-left: 6px;
-          font-weight: 400;
-        }
-        .archive-search {
-          width: 100%;
-          box-sizing: border-box;
-          padding: 8px 12px;
-          border: 1px solid var(--modal-border, #e4e4e7);
-          border-radius: 8px;
-          font-size: 13px;
-          background: var(--modal-input-bg, #f9f9fb);
-          color: var(--modal-ink);
-          outline: none;
-          margin-bottom: 4px;
-          transition: border-color 0.15s;
-        }
-        .archive-search:focus {
-          border-color: var(--modal-focus, #a0a0b0);
-        }
-        .archive-search::placeholder { color: var(--modal-muted); opacity: 0.6; }
-        .archive-divider {
-          height: 1px;
-          background: var(--modal-border, #e4e4e7);
-          margin-top: 14px;
-        }
-        .archive-feed {
-          overflow-y: auto;
-          padding: 0 20px;
-          flex: 1;
-        }
-        .archive-empty {
-          padding: 40px 0;
-          text-align: center;
-          font-size: 13px;
-          color: var(--modal-muted);
-          font-style: italic;
-        }
-        .modal-close {
-          background: none;
-          border: none;
-          cursor: pointer;
-          font-size: 13px;
-          color: var(--modal-muted);
-          padding: 2px 6px;
-          border-radius: 6px;
-          line-height: 1;
-          transition: background 0.15s;
-        }
-        .modal-close:hover { background: var(--modal-border, #e4e4e7); }
-      `}</style>
-      <div
-        className="archive-overlay"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="summaryModalTitle"
-        onClick={(e) => e.target === e.currentTarget && close()}
-      >
-        <div className="archive-modal" onClick={(e) => e.stopPropagation()}>
+        @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap');
 
-          <div className="archive-header">
-            <div className="archive-title-row">
-              <span className="archive-title" id="summaryModalTitle">
-                Reading archive
-                <span className="archive-count">
-                  {filtered.length} {filtered.length === 1 ? 'book' : 'books'}
-                </span>
-              </span>
-              <button type="button" className="modal-close" onClick={close} aria-label="close">
-                ✕
-              </button>
+        @keyframes tsundo-fade-in {
+          from { opacity: 0; transform: translateY(16px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0)   scale(1);    }
+        }
+
+        .tsundo-summary-modal::-webkit-scrollbar { width: 4px; }
+        .tsundo-summary-modal::-webkit-scrollbar-track { background: transparent; }
+        .tsundo-summary-modal::-webkit-scrollbar-thumb { background: rgba(200,180,140,0.2); border-radius: 2px; }
+
+        .tsundo-search:focus { outline: none; border-color: rgba(200,180,140,0.45) !important; }
+
+        .tsundo-close-btn:hover { background: rgba(255,255,255,0.12) !important; }
+      `}</style>
+
+      {/* backdrop */}
+      <div
+        onClick={handleBackdrop}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 100,
+          background: "rgba(20,12,6,0.78)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px 16px",
+        }}
+      >
+        {/* panel */}
+        <div
+          className="tsundo-summary-modal"
+          style={{
+            width: "100%",
+            maxWidth: 560,
+            maxHeight: "85vh",
+            minHeight: "85vh",
+            display: "flex",
+            flexDirection: "column",
+            background: "linear-gradient(160deg, #2a1f12 0%, #1e1508 60%, #160f05 100%)",
+            border: "1px solid rgba(200,160,75,0.2)",
+            borderRadius: 4,
+            boxShadow: "0 32px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05)",
+            animation: "tsundo-fade-in 0.22s ease-out both",
+            overflow: "hidden",
+          }}
+        >
+          {/* ── header ── */}
+          <div
+            style={{
+              padding: "20px 24px 16px",
+              borderBottom: "1px solid rgba(255,255,255,0.07)",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 12,
+              flexShrink: 0,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontFamily: "'Courier New', monospace",
+                  fontSize: 10,
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: "rgba(200,160,75,0.6)",
+                  marginBottom: 4,
+                }}
+              >
+                Reading Archive
+              </div>
+              <h2
+                style={{
+                  fontFamily: "'IM Fell English', Georgia, serif",
+                  fontSize: 22,
+                  fontWeight: 400,
+                  color: "#e8dcc8",
+                  margin: 0,
+                  lineHeight: 1.2,
+                }}
+              >
+                Summary
+              </h2>
             </div>
-            <input
-              className="archive-search"
-              type="search"
-              placeholder="Filter by title, review, genre…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              autoFocus
-            />
-              <div className="archive-divider" />
+
+            <button
+              className="tsundo-close-btn"
+              onClick={close}
+              aria-label="Close"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 3,
+                color: "rgba(200,180,140,0.7)",
+                cursor: "pointer",
+                width: 28,
+                height: 28,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+                flexShrink: 0,
+                transition: "background 0.15s",
+              }}
+            >
+              ✕
+            </button>
           </div>
 
-          <div className="archive-feed">
-            {filtered.length === 0 ? (
-              <div className="archive-empty">No books match your search.</div>
-            ) : (
-              filtered.map((book) => <BookCard key={book.id} book={book} />)
+          {/* ── aggregate bar ── */}
+          <div
+            style={{
+              padding: "12px 24px",
+              background: "rgba(0,0,0,0.2)",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
+              <div>
+                <div
+                  style={{
+                    fontFamily: "'Courier New', monospace",
+                    fontSize: 9,
+                    letterSpacing: "0.15em",
+                    textTransform: "uppercase",
+                    color: "rgba(180,160,120,0.5)",
+                    marginBottom: 2,
+                  }}
+                >
+                  Books
+                </div>
+                <div
+                  style={{
+                    fontFamily: "'Courier New', monospace",
+                    fontSize: 18,
+                    color: "#c8b48a",
+                    lineHeight: 1,
+                  }}
+                >
+                  {filtered.length}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  width: 1,
+                  height: 28,
+                  background: "rgba(255,255,255,0.08)",
+                }}
+              />
+
+              <div>
+                <div
+                  style={{
+                    fontFamily: "'Courier New', monospace",
+                    fontSize: 9,
+                    letterSpacing: "0.15em",
+                    textTransform: "uppercase",
+                    color: "rgba(180,160,120,0.5)",
+                    marginBottom: 2,
+                  }}
+                >
+                  Time spent
+                </div>
+                <div
+                  style={{
+                    fontFamily: "'Courier New', monospace",
+                    fontSize: 18,
+                    color: "#b4dcc8",
+                    lineHeight: 1,
+                  }}
+                >
+                  {formatAggregate(totalMinutes)}
+                </div>
+              </div>
+            </div>
+
+            {/* small proportion bar */}
+            {allBooks.length > 0 && (
+              <div
+                style={{
+                  width: 100,
+                  height: 4,
+                  background: "rgba(255,255,255,0.08)",
+                  borderRadius: 2,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${(filtered.length / allBooks.length) * 100}%`,
+                    height: "100%",
+                    background: "linear-gradient(90deg, #6b5caa, #4a8a72)",
+                    borderRadius: 2,
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
             )}
           </div>
 
+          {/* ── search ── */}
+          <div
+            style={{
+              padding: "12px 24px",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ position: "relative" }}>
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  left: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "rgba(200,180,140,0.3)",
+                  fontSize: 12,
+                  pointerEvents: "none",
+                  fontFamily: "'Courier New', monospace",
+                }}
+              >
+                ⌕
+              </span>
+              <input
+                className="tsundo-search"
+                type="text"
+                placeholder="filter by title…"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "rgba(0,0,0,0.3)",
+                  border: "1px solid rgba(200,180,140,0.15)",
+                  borderRadius: 3,
+                  color: "#e8dcc8",
+                  fontFamily: "'Courier New', monospace",
+                  fontSize: 13,
+                  padding: "8px 12px 8px 28px",
+                  boxSizing: "border-box",
+                  transition: "border-color 0.15s",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* ── feed ── */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              scrollbarWidth: "none",
+              padding: "0 24px",
+            }}
+          >
+            {filtered.length === 0 ? (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "40px 0",
+                  fontFamily: "'IM Fell English', Georgia, serif",
+                  fontStyle: "italic",
+                  color: "rgba(200,180,140,0.3)",
+                  fontSize: 15,
+                }}
+              >
+                {query ? "No books match that search." : "No archived books yet."}
+              </div>
+            ) : (
+              filtered.map(book => <BookEntry key={book.id} book={book} />)
+            )}
+          </div>
+
+          {/* ── footer ── */}
+          <div
+            style={{
+              padding: "10px 24px",
+              borderTop: "1px solid rgba(255,255,255,0.05)",
+              display: "flex",
+              justifyContent: "flex-end",
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "'Courier New', monospace",
+                fontSize: 10,
+                color: "rgba(200,180,140,0.25)",
+                letterSpacing: "0.1em",
+              }}
+            >
+              Miten - Tsundoku Manager
+            </span>
+          </div>
         </div>
       </div>
     </>
-  )
+  );
 }
+
+export default SummaryModal;

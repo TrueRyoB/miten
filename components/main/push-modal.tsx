@@ -11,7 +11,7 @@ import {
   validateEstimatedMinutesRaw,
 } from '@/types/estimated-minutes'
 import { useClock } from '@/hooks/use-clock'
-import { BOOKS_COLORS as COLORS } from '@/utils/colors/book'
+import { nextBookColor } from '@/utils/colors/book'
 
 export default function PushModal( { columnId }: { columnId: string } ) {
   const { close } = useModal()
@@ -46,7 +46,7 @@ export default function PushModal( { columnId }: { columnId: string } ) {
       id: "0", 
       columnId: columnId,
       createdAt: nowISO(),
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      color: nextBookColor(),
       title: trimmed,
       estimatedMinutes: estimatedMinutes,
       sourceUrl: link.trim(),
